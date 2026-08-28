@@ -1,0 +1,52 @@
+name: vercel
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/vercel.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/vercel.yml"]
+
+concurrency:
+  group: vercel-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      url: ${{ steps.deploy.outputs.url }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC: federate GitHub's identity to Vercel using a short-lived
+      # token. No VERCEL_TOKEN secret required.
+      - name: Get Vercel OIDC token
+        id: vercel-oidc
+        uses: vercel/login@v1
+        with:
+          vercel-oidc-token: ${{ secrets.VERCEL_OIDC_TOKEN }}
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+        env:
+          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}
+
+      - name: Build
+        run: vercel build --prod=${{ github.ref == 'refs/heads/main' }}
+        env:
+          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}
+
+      - name: Deploy
+        id: deploy
+        run: vercel deploy --prebuilt --yes
+        env:
+          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}

@@ -1,0 +1,147 @@
+﻿
+==============================================================================
+STEP 1 - Issue the business outcome
+==============================================================================
+  Objective: "Onboard the new client ABC with John Doe at [email protected]."
+
+==============================================================================
+STEP 2 - AI Manager produced this plan
+==============================================================================
+  - [sales_crm] Upsert client company  (depends on: (none))
+  - [sales_crm] Create primary contact  (depends on: company)
+  - [project_ops] Create onboarding project  (depends on: contact)
+  - [calendar] Schedule kickoff meeting  (depends on: project)
+  - [communication] Send welcome email  (depends on: project)
+
+==============================================================================
+STEP 3 - Workflow created
+==============================================================================
+  id=ad1130a0-64b0-46c4-b405-b765919d5d30  state=PLANNED
+
+==============================================================================
+STEP 4 - First pass: workflow ran, external sends paused
+==============================================================================
+  workflow state: WAITING_APPROVAL
+    sales_crm      Upsert client company                -> COMPLETED  err=None
+    sales_crm      Create primary contact               -> COMPLETED  err=None
+    project_ops    Create onboarding project            -> COMPLETED  err=None
+    calendar       Schedule kickoff meeting             -> WAITING_APPROVAL  err=None
+    communication  Send welcome email                   -> PENDING  err=None
+
+==============================================================================
+STEP 5 - Workflow ran to completion after batched approvals
+==============================================================================
+  approvals approved: 2
+  workflow state: COMPLETED
+    sales_crm      Upsert client company                -> COMPLETED  err=None
+    sales_crm      Create primary contact               -> COMPLETED  err=None
+    project_ops    Create onboarding project            -> COMPLETED  err=None
+    calendar       Schedule kickoff meeting             -> COMPLETED  err=None
+    communication  Send welcome email                   -> COMPLETED  err=None
+
+==============================================================================
+STEP 6 - Per-agent tool calls (from AgentRun.tool_calls)
+==============================================================================
+  sales_crm      task=347ee1fb  tool_calls=1
+  calendar       task=5d70abde  tool_calls=1
+  calendar       task=5d70abde  tool_calls=1
+  project_ops    task=6a3afbe5  tool_calls=1
+  sales_crm      task=77aacb5f  tool_calls=1
+  communication  task=80fe58e9  tool_calls=0
+  communication  task=80fe58e9  tool_calls=1
+
+==============================================================================
+STEP 7 - Real systems were updated (read directly from disk)
+==============================================================================
+  CRM contacts (crm.contacts.json):
+{
+  "d0ed65a2-e289-4a85-a6e1-d844405ee570": {
+    "id": "d0ed65a2-e289-4a85-a6e1-d844405ee570",
+    "workspace_id": "94d08b0f-80d9-46d9-b05b-7b36c6e1f76f",
+    "name": "John Doe",
+    "email": "[email protected]",
+    "company": "ABC",
+    "company_id": "63ce4100-fa0a-4125-b602-c75b2f5f3368"
+  }
+}
+  CRM companies (crm.companies.json):
+{
+  "abc": {
+    "id": "63ce4100-fa0a-4125-b602-c75b2f5f3368",
+    "workspace_id": "94d08b0f-80d9-46d9-b05b-7b36c6e1f76f",
+    "name": "ABC",
+    "domain": null
+  }
+}
+  Email outbox (email.outbox.json):
+{
+  "6f33cab5-861c-4621-a7ca-97a277f3cb5e": {
+    "id": "6f33cab5-861c-4621-a7ca-97a277f3cb5e",
+    "status": "SENT",
+    "workspace_id": "94d08b0f-80d9-46d9-b05b-7b36c6e1f76f",
+    "to": "[email protected]",
+    "subject": "Welcome",
+    "body": "Hi John Doe, welcome aboard. We are excited to get started."
+  }
+}
+  Calendar events (calendar.events.json):
+{
+  "f18a662b-aa30-4c1e-a278-29aa13789618": {
+    "id": "f18a662b-aa30-4c1e-a278-29aa13789618",
+    "workspace_id": "94d08b0f-80d9-46d9-b05b-7b36c6e1f76f",
+    "status": "CONFIRMED",
+    "title": "Client kickoff",
+    "start": "2026-08-29T10:00:00+00:00",
+    "end": null,
+    "attendees": [
+      "[email protected]"
+    ]
+  }
+}
+
+==============================================================================
+STEP 8 - Audit trail (excerpt)
+==============================================================================
+  [001] workflow.created         target=workflow:ad1130a0-64b0-46c4-b405-b765919d5d30
+  [002] approval.requested       target=approval:pending
+  [003] approval.approved        target=approval:9d9d9e25-093a-4cca-b6fe-d0f8c59a760a
+  [004] approval.requested       target=approval:pending
+  [005] approval.approved        target=approval:0a3e68d0-9f4d-4be1-bcb1-c3cad2c66216
+  [006] workflow.finished        target=workflow:ad1130a0-64b0-46c4-b405-b765919d5d30
+
+==============================================================================
+STEP 9 - Verify-before-completion: no task claimed success without external confirmation
+==============================================================================
+
+==============================================================================
+PROOF COMPLETE
+==============================================================================
+  Workflow:        ad1130a0-64b0-46c4-b405-b765919d5d30
+  Final state:     COMPLETED
+  Tasks:           5
+  Agents used:     ['calendar', 'communication', 'project_ops', 'sales_crm']
+  Tool calls:      6
+  Approvals:       0 (all approved)
+  Stores on disk:  C:\Users\amanc\Documents\Default Project\backend\var\stores_proof
+
+
+==============================================================================
+INVOICE SCENARIO - step 1: seed an overdue invoice
+==============================================================================
+  seeded invoice inv-1 (Globex, $199, 5 days overdue)
+
+==============================================================================
+INVOICE SCENARIO - step 2: submit objective
+==============================================================================
+  objective: "Handle overdue invoice follow-ups and tell me what needs approval."
+  plan tasks:
+    [find_overdue] finance Find overdue invoices depends_on=[]
+    [draft_reminders] communication Draft reminder messages depends_on=['find_overdue']
+
+==============================================================================
+INVOICE SCENARIO - step 3: outcome
+==============================================================================
+  workflow state: COMPLETED
+    finance        Find overdue invoices                -> COMPLETED
+    communication  Draft reminder messages              -> COMPLETED
+  reminder draft persisted: subject='Payment reminder: Globex' body_excerpt='Hi,\n\nThis is a friendly reminder that the following invoices are past due: Globe'

@@ -1,0 +1,36 @@
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# virtual envs
+.venv/
+venv/
+env/
+
+# local env
+.env
+.env.local
+.env.*.local
+
+# runtime stores (proof + connectors)
+var/
+
+# editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# build
+dist/
+build/
+*.egg-info

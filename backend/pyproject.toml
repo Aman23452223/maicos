@@ -1,0 +1,57 @@
+[project]
+name = "maicos-backend"
+version = "0.1.0"
+description = "Multi-Agent AI Company Operating System - backend"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "SQLAlchemy>=2.0",
+  "alembic>=1.13",
+  "psycopg2-binary>=2.9",
+  "pgvector>=0.3",
+  "asyncpg>=0.29",
+  "python-jose[cryptography]>=3.3",
+  "passlib[bcrypt]>=1.7",
+  "python-multipart>=0.0.9",
+  "httpx>=0.27",
+  "tenacity>=8.3",
+  "langgraph>=0.1",
+  "langchain>=0.2",
+  "langchain-openai>=0.1",
+  "redis>=5.0",
+  "apscheduler>=3.10",
+  "structlog>=24.1",
+  "PyPDF2>=3.0",
+  "python-docx>=1.1",
+  "email-validator>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# B008 is the standard FastAPI `Depends(...)` pattern; the check is a false
+# positive in this project. Other rules are kept at defaults.
+extend-select = ["B008"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background", "jose", "passlib", "passlib.context", "docx", "PyPDF2"]
+ignore_missing_imports = true
+
