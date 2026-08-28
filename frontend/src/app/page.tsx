@@ -15,7 +15,8 @@ export default function HeroLanding() {
   useEffect(() => {
     /* ---- wordmark letter reveal ---- */
     const logoText = logoTextRef.current;
-    if (logoText) {
+    if (logoText && !logoText.dataset.animated) {
+      logoText.dataset.animated = "true";
       const text = logoText.textContent ?? "";
       logoText.innerHTML = "";
       [...text].forEach((char, index) => {
@@ -32,7 +33,8 @@ export default function HeroLanding() {
 
     /* ---- hero headline word reveal ---- */
     const heroTitle = heroTitleRef.current;
-    if (heroTitle) {
+    if (heroTitle && !heroTitle.dataset.animated) {
+      heroTitle.dataset.animated = "true";
       const text = heroTitle.innerHTML;
       const parts = text.split(/(\s+|<br\s*\/?>)/i);
       heroTitle.innerHTML = "";
