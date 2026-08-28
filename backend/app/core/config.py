@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     openrouter_default_model: str = "minimax/minimax-m3:free"
 
     document_storage_dir: str = "./var/documents"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
 
     default_autonomy_level: int = 2
     approval_policy_json: str = "{}"
