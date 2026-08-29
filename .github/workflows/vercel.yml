@@ -3,10 +3,10 @@ name: vercel
 on:
   push:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/vercel.yml"]
+    paths: ["frontend/**", "vercel.json", ".github/workflows/vercel.yml"]
   pull_request:
     branches: [main]
-    paths: ["frontend/**", ".github/workflows/vercel.yml"]
+    paths: ["frontend/**", "vercel.json", ".github/workflows/vercel.yml"]
 
 concurrency:
   group: vercel-${{ github.ref }}
@@ -24,29 +24,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # OIDC: federate GitHub's identity to Vercel using a short-lived
-      # token. No VERCEL_TOKEN secret required.
-      - name: Get Vercel OIDC token
-        id: vercel-oidc
-        uses: vercel/login@v1
+      - uses: actions/setup-node@v4
         with:
-          vercel-oidc-token: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install
-        run: npm ci || npm install
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Pull Vercel environment
-        run: vercel pull --yes --environment=${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+        run: vercel pull --yes --environment=${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }} --token=${{ secrets.VERCEL_TOKEN }}
         env:
-          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Build
-        run: vercel build --prod=${{ github.ref == 'refs/heads/main' }}
+        run: vercel build ${{ github.ref == 'refs/heads/main' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
         env:
-          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Deploy
         id: deploy
-        run: vercel deploy --prebuilt --yes
+        run: |
+          URL=$(vercel deploy --prebuilt ${{ github.ref == 'refs/heads/main' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$URL" >> $GITHUB_OUTPUT
         env:
-          VERCEL_TOKEN: ${{ steps.vercel-oidc.outputs.vercel-oidc-token }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
