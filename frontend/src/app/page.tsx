@@ -1,264 +1,343 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-const ASSET_BASE =
-  "https://api.getlayers.ai/storage/v1/object/public/public/assets/loopstack-f8c64439bf";
+const AGENTS = [
+  {
+    icon: "⚡",
+    name: "Command Agent",
+    role: "Executive Brain",
+    desc: "Interprets your goals and delegates tasks across your entire AI workforce — instantly.",
+    route: "/command",
+  },
+  {
+    icon: "🔁",
+    name: "Workflow Agent",
+    role: "Process Architect",
+    desc: "Designs, optimizes, and runs automated workflows end-to-end without human bottlenecks.",
+    route: "/workflows",
+  },
+  {
+    icon: "🔍",
+    name: "Audit Agent",
+    role: "Quality Guardian",
+    desc: "Monitors every decision, flags anomalies, and ensures operations stay on-track.",
+    route: "/audit",
+  },
+  {
+    icon: "🤝",
+    name: "Ops Agent",
+    role: "Execution Engine",
+    desc: "Handles day-to-day operations — emails, data, reports, scheduling — autonomously.",
+    route: "/agents",
+  },
+];
 
-export default function HeroLanding() {
-  const logoTextRef = useRef<HTMLHeadingElement | null>(null);
-  const heroTitleRef = useRef<HTMLHeadingElement | null>(null);
-  const glassCardRef = useRef<HTMLDivElement | null>(null);
-  const cursorRingRef = useRef<HTMLDivElement | null>(null);
+const STEPS = [
+  { num: "01", title: "Tell us the outcome", desc: "No need for step-by-step instructions. Just describe what you want achieved — revenue, growth, efficiency." },
+  { num: "02", title: "Agents get to work", desc: "MAICOS assigns the right agents automatically, builds a plan, and begins executing across your business." },
+  { num: "03", title: "Verify & refine", desc: "Review every action in real-time. Approve, redirect, or let agents run fully autonomous." },
+  { num: "04", title: "Scale infinitely", desc: "Add more goals, more agents, more routes. Your AI company OS grows with your ambition." },
+];
+
+const USE_CASES = [
+  { emoji: "🏢", title: "Startups", desc: "Replace an entire ops team with 10 specialized agents from day one." },
+  { emoji: "📊", title: "Scale-ups", desc: "Run parallel workflows across sales, marketing, and finance simultaneously." },
+  { emoji: "🏭", title: "Enterprises", desc: "Automate compliance, reporting, and cross-department coordination at scale." },
+  { emoji: "🛒", title: "E-commerce", desc: "Manage inventory, customer ops, and growth campaigns — all on autopilot." },
+  { emoji: "💼", title: "Agencies", desc: "Deliver client work 5x faster with AI agents handling research, writing, and execution." },
+  { emoji: "🔬", title: "SaaS", desc: "Automate onboarding, support, and analytics pipelines without engineering bandwidth." },
+];
+
+const TESTIMONIALS = [
+  { name: "Priya Sharma", role: "CEO, NovaBuild", text: "MAICOS replaced three full-time hires in our ops team. It just runs — and it runs perfectly.", stars: 5 },
+  { name: "Alex Chen", role: "Founder, Loopflow", text: "I told it to grow MRR by 20%. Two weeks later, we were at 23%. I'm still processing that.", stars: 5 },
+  { name: "Raya Okafor", role: "COO, Meridian Labs", text: "The audit agent alone is worth it. It caught a $40k billing error we'd have missed for months.", stars: 5 },
+];
+
+export default function MAICOSLanding() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [testimonyIdx, setTestimonyIdx] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    /* ---- wordmark letter reveal ---- */
-    const logoText = logoTextRef.current;
-    if (logoText && !logoText.dataset.animated) {
-      logoText.dataset.animated = "true";
-      const text = logoText.textContent ?? "";
-      logoText.innerHTML = "";
-      [...text].forEach((char, index) => {
-        const wrapper = document.createElement("span");
-        wrapper.className = "letter-wrapper";
-        const inner = document.createElement("span");
-        inner.className = "letter-inner";
-        inner.textContent = char === " " ? " " : char;
-        inner.style.animationDelay = `${index * 0.09}s`;
-        wrapper.appendChild(inner);
-        logoText.appendChild(wrapper);
-      });
-    }
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-    /* ---- hero headline word reveal ---- */
-    const heroTitle = heroTitleRef.current;
-    if (heroTitle && !heroTitle.dataset.animated) {
-      heroTitle.dataset.animated = "true";
-      const text = heroTitle.innerHTML;
-      const parts = text.split(/(\s+|<br\s*\/?>)/i);
-      heroTitle.innerHTML = "";
-      let wordIndex = 0;
-      parts.forEach((part) => {
-        if (part.trim() === "") {
-          heroTitle.appendChild(document.createTextNode(" "));
-        } else if (part.toLowerCase().startsWith("<br")) {
-          heroTitle.appendChild(document.createElement("br"));
-        } else {
-          const wrapper = document.createElement("span");
-          wrapper.className = "word-wrapper";
-          const inner = document.createElement("span");
-          inner.className = "word-inner";
-          inner.textContent = part;
-          inner.style.animationDelay = `${wordIndex * 0.1}s`;
-          wordIndex++;
-          wrapper.appendChild(inner);
-          heroTitle.appendChild(wrapper);
-        }
-      });
-    }
-
-    /* ---- custom cursor + LERP pill ---- */
-    const glassCard = glassCardRef.current;
-    const cursorRing = cursorRingRef.current;
-    if (!glassCard || !cursorRing) return;
-
-    let mouseX = window.innerWidth / 2;
-    let mouseY = window.innerHeight / 2;
-    let cardX = mouseX;
-    let cardY = mouseY;
-    let ringX = mouseX;
-    let ringY = mouseY;
-    let isFirstMove = true;
-    let scale = 0;
-    let targetScale = 0;
-    let isHoveringBtn = false;
-
-    const onMove = (e: MouseEvent) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-      if (isFirstMove) {
-        cardX = mouseX;
-        cardY = mouseY;
-        ringX = mouseX;
-        ringY = mouseY;
-        isFirstMove = false;
-        glassCard.classList.add("active");
-        cursorRing.classList.add("active");
-      }
-      if (!isHoveringBtn) targetScale = 1;
-    };
-    const onLeave = () => {
-      targetScale = 0;
-    };
-    const onEnter = () => {
-      if (!isHoveringBtn) targetScale = 1;
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseleave", onLeave);
-    document.addEventListener("mouseenter", onEnter);
-
-    const heroBtn = document.querySelector<HTMLElement>(".hero-btn");
-    const onBtnEnter = () => {
-      isHoveringBtn = true;
-      targetScale = 0;
-      cursorRing.classList.add("expanded");
-    };
-    const onBtnLeave = () => {
-      isHoveringBtn = false;
-      targetScale = 1;
-      cursorRing.classList.remove("expanded");
-    };
-    if (heroBtn) {
-      heroBtn.addEventListener("mouseenter", onBtnEnter);
-      heroBtn.addEventListener("mouseleave", onBtnLeave);
-    }
-
-    let raf = 0;
-    const tick = () => {
-      cardX += (mouseX - cardX) * 0.08;
-      cardY += (mouseY - cardY) * 0.08;
-      ringX = mouseX;
-      ringY = mouseY;
-      scale += (targetScale - scale) * 0.15;
-      const ringScale = cursorRing.classList.contains("expanded")
-        ? 1.6 * scale
-        : scale;
-      glassCard.style.transform = `translate3d(${cardX}px, ${cardY}px, 0) translate(-50%, -50%) scale(${scale})`;
-      cursorRing.style.transform = `translate3d(${ringX}px, ${ringY}px, 0) translate(-50%, -50%) scale(${ringScale})`;
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseleave", onLeave);
-      document.removeEventListener("mouseenter", onEnter);
-      if (heroBtn) {
-        heroBtn.removeEventListener("mouseenter", onBtnEnter);
-        heroBtn.removeEventListener("mouseleave", onBtnLeave);
-      }
-    };
+  useEffect(() => {
+    const t = setInterval(() => setTestimonyIdx((i) => (i + 1) % TESTIMONIALS.length), 6000);
+    return () => clearInterval(t);
   }, []);
 
   return (
-    <div className="hero-root">
-      <img
-        src={`${ASSET_BASE}/black_gradient.svg`}
-        alt="Top gradient"
-        id="top-gradient"
-      />
-
-      <main className="hero-content">
-        <h1 className="hero-title" ref={heroTitleRef}>
-          Tell us the outcome. <br /> We run the company for you.
-        </h1>
-        <Link href="/command" className="hero-btn" aria-label="Open the command center">
-          <span className="btn-text">Open Command Center</span>
-          <span className="blinking-dot" aria-hidden="true" />
-        </Link>
-        <p className="hero-sub">
-          Multi-agent AI company OS · 10 specialized agents · 27 verified routes
-        </p>
-      </main>
-
-      <footer className="footer-container">
-        <div className="footer-top">
-          <h2 className="footer-title">Stay in the loop</h2>
-          <h2 className="footer-title quote">Plan. Delegate. Verify.</h2>
-        </div>
-
-        <hr className="footer-divider" />
-
-        <div className="footer-bottom">
-          <div className="footer-socials">
-            <a href="#" aria-label="GitHub" className="social-icon">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
-              </svg>
-            </a>
-            <a href="#" aria-label="X" className="social-icon">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 4l11.733 16h4.267l-11.733 -16z" />
-                <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772" />
-              </svg>
-            </a>
-            <a href="#" aria-label="LinkedIn" className="social-icon">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-                <rect x="2" y="9" width="4" height="12" />
-                <circle cx="4" cy="4" r="2" />
-              </svg>
-            </a>
+    <div className="maicos-landing">
+      {/* ── NAV ── */}
+      <nav className={`m-nav ${scrolled ? "m-nav--scrolled" : ""}`}>
+        <div className="m-nav__inner">
+          <Link href="/" className="m-nav__logo">MAICOS</Link>
+          <div className={`m-nav__links ${menuOpen ? "open" : ""}`}>
+            <Link href="#agents" onClick={() => setMenuOpen(false)}>Agents</Link>
+            <Link href="#how" onClick={() => setMenuOpen(false)}>How it Works</Link>
+            <Link href="#usecases" onClick={() => setMenuOpen(false)}>Use Cases</Link>
+            <Link href="#testimonials" onClick={() => setMenuOpen(false)}>Reviews</Link>
+            <Link href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</Link>
           </div>
+          <div className="m-nav__actions">
+            <Link href="/login" className="m-btn m-btn--ghost">Sign In</Link>
+            <Link href="/command" className="m-btn m-btn--primary">Open Command Center</Link>
+          </div>
+          <button className="m-nav__burger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+            <span /><span /><span />
+          </button>
+        </div>
+      </nav>
 
-          <nav className="footer-links">
-            <Link href="/command" className="footer-link">
-              Command
+      {/* ── HERO ── */}
+      <section className="m-hero" ref={heroRef}>
+        <div className="m-hero__video-wrap">
+          <video autoPlay muted loop playsInline>
+            <source src="https://api.getlayers.ai/storage/v1/object/public/public/assets/loopstack-f8c64439bf/flower.mp4" type="video/mp4" />
+          </video>
+          <div className="m-hero__overlay" />
+        </div>
+        <div className="m-hero__content">
+          <div className="m-hero__badge">
+            <span className="m-dot" /> 10 Specialized Agents · Live
+          </div>
+          <h1 className="m-hero__title">
+            Tell us the outcome.<br />
+            <em>We run the company for you.</em>
+          </h1>
+          <p className="m-hero__sub">
+            Multi-agent AI company OS — built to automate, delegate, and execute across every function of your business.
+          </p>
+          <div className="m-hero__ctas">
+            <Link href="/command" className="m-btn m-btn--hero-primary">
+              Open Command Center
+              <span className="m-dot" />
             </Link>
-            <Link href="/workflows" className="footer-link">
-              Workflows
-            </Link>
-            <Link href="/agents" className="footer-link">
-              Agents
-            </Link>
-            <Link href="/audit" className="footer-link">
-              Audit
-            </Link>
-          </nav>
+            <Link href="#how" className="m-btn m-btn--hero-ghost">See How It Works</Link>
+          </div>
+          <div className="m-hero__stats">
+            <div className="m-stat"><span>10</span>Agents</div>
+            <div className="m-stat-div" />
+            <div className="m-stat"><span>27</span>Verified Routes</div>
+            <div className="m-stat-div" />
+            <div className="m-stat"><span>∞</span>Scale</div>
+          </div>
+        </div>
+        <div className="m-hero__scroll">
+          <span>Scroll to explore</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3v10M4 9l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      </section>
 
-          <div className="footer-copyright">© 2026 MAICOS</div>
+      {/* ── PHILOSOPHY ── */}
+      <section className="m-section m-philosophy">
+        <div className="m-container m-container--narrow text-center">
+          <p className="m-overline">Our Belief</p>
+          <h2 className="m-h2">Built for the age of autonomous business</h2>
+          <p className="m-body-lg">
+            Every company deserves an AI workforce that understands intent, not just instructions. MAICOS doesn't wait for prompts — it thinks, delegates, executes, and verifies. Like a Chief of Staff that never sleeps.
+          </p>
+          <div className="m-divider-leaf">
+            <div className="m-divider-line" />
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2c0 0-7 4-7 9a7 7 0 0014 0c0-5-7-9-7-9z" fill="currentColor" opacity=".3"/><path d="M10 2v16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <div className="m-divider-line" />
+          </div>
+        </div>
+      </section>
+
+      {/* ── AGENTS ── */}
+      <section className="m-section" id="agents">
+        <div className="m-container">
+          <div className="m-section-header">
+            <p className="m-overline">Your AI Workforce</p>
+            <h2 className="m-h2">Meet Your Agents</h2>
+            <p className="m-body">Specialized AI agents, each an expert in their domain. All working in sync.</p>
+          </div>
+          <div className="m-agents-grid">
+            {AGENTS.map((a) => (
+              <Link href={a.route} key={a.name} className="m-agent-card">
+                <div className="m-agent-card__icon">{a.icon}</div>
+                <div className="m-agent-card__body">
+                  <p className="m-agent-card__role">{a.role}</p>
+                  <h3 className="m-agent-card__name">{a.name}</h3>
+                  <p className="m-agent-card__desc">{a.desc}</p>
+                </div>
+                <div className="m-agent-card__cta">
+                  Explore Agent
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section className="m-section m-section--alt" id="how">
+        <div className="m-container">
+          <div className="m-section-header">
+            <p className="m-overline">The Process</p>
+            <h2 className="m-h2">How MAICOS Works</h2>
+            <p className="m-body">From goal to execution in four steps. No technical setup. No micromanaging.</p>
+          </div>
+          <div className="m-steps">
+            {STEPS.map((s) => (
+              <div key={s.num} className="m-step">
+                <div className="m-step__num">{s.num}</div>
+                <div className="m-step__body">
+                  <h3 className="m-step__title">{s.title}</h3>
+                  <p className="m-step__desc">{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── USE CASES ── */}
+      <section className="m-section" id="usecases">
+        <div className="m-container">
+          <div className="m-section-header">
+            <p className="m-overline">Built For Everyone</p>
+            <h2 className="m-h2">What kind of company are you?</h2>
+            <p className="m-body">MAICOS adapts to your industry, your team size, and your ambition.</p>
+          </div>
+          <div className="m-usecases-grid">
+            {USE_CASES.map((u) => (
+              <div key={u.title} className="m-usecase-card">
+                <span className="m-usecase-card__emoji">{u.emoji}</span>
+                <h3 className="m-usecase-card__title">{u.title}</h3>
+                <p className="m-usecase-card__desc">{u.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── TESTIMONIALS ── */}
+      <section className="m-section m-section--alt" id="testimonials">
+        <div className="m-container m-container--narrow">
+          <div className="m-section-header">
+            <p className="m-overline">Social Proof</p>
+            <h2 className="m-h2">What founders are saying</h2>
+          </div>
+          <div className="m-testimonial">
+            <div className="m-testimonial__quote">&ldquo;</div>
+            <p className="m-testimonial__text">{TESTIMONIALS[testimonyIdx].text}</p>
+            <div className="m-testimonial__stars">{"★".repeat(TESTIMONIALS[testimonyIdx].stars)}</div>
+            <div className="m-testimonial__author">
+              <strong>{TESTIMONIALS[testimonyIdx].name}</strong>
+              <span>{TESTIMONIALS[testimonyIdx].role}</span>
+            </div>
+            <div className="m-testimonial__dots">
+              {TESTIMONIALS.map((_, i) => (
+                <button key={i} className={`m-dot-btn ${i === testimonyIdx ? "active" : ""}`} onClick={() => setTestimonyIdx(i)} aria-label={`Review ${i+1}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section className="m-section" id="pricing">
+        <div className="m-container">
+          <div className="m-section-header">
+            <p className="m-overline">Simple Pricing</p>
+            <h2 className="m-h2">Start running your AI company</h2>
+          </div>
+          <div className="m-pricing-grid">
+            {[
+              { plan: "Starter", price: "$0", period: "forever", desc: "For founders exploring AI-first ops.", features: ["3 Active Agents", "5 Workflows/month", "Command Center access", "Basic Audit logs"], cta: "Get Started", highlight: false },
+              { plan: "Growth", price: "$49", period: "per month", desc: "For teams ready to delegate everything.", features: ["10 Active Agents", "Unlimited Workflows", "All 27 routes unlocked", "Priority Audit + alerts", "Supabase Auth included"], cta: "Start Free Trial", highlight: true },
+              { plan: "Enterprise", price: "Custom", period: "bespoke", desc: "For companies that run on MAICOS.", features: ["Unlimited Agents", "Custom integrations", "Dedicated support", "SLA & compliance", "On-premise option"], cta: "Contact Us", highlight: false },
+            ].map((p) => (
+              <div key={p.plan} className={`m-plan-card ${p.highlight ? "m-plan-card--highlight" : ""}`}>
+                {p.highlight && <div className="m-plan-card__badge">Most Popular</div>}
+                <div className="m-plan-card__top">
+                  <h3 className="m-plan-card__name">{p.plan}</h3>
+                  <div className="m-plan-card__price">
+                    <span className="m-plan-card__amount">{p.price}</span>
+                    <span className="m-plan-card__period">/{p.period}</span>
+                  </div>
+                  <p className="m-plan-card__desc">{p.desc}</p>
+                </div>
+                <ul className="m-plan-card__features">
+                  {p.features.map((f) => (
+                    <li key={f}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3" stroke="#39ff14" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/command" className={`m-btn ${p.highlight ? "m-btn--primary" : "m-btn--ghost"} m-btn--full`}>{p.cta}</Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA BANNER ── */}
+      <section className="m-cta-banner">
+        <div className="m-container m-container--narrow text-center">
+          <h2 className="m-cta-banner__title">Ready to delegate everything?</h2>
+          <p className="m-cta-banner__sub">Join the founders who let MAICOS run their company while they focus on what matters.</p>
+          <Link href="/command" className="m-btn m-btn--primary m-btn--lg">
+            Open Command Center
+            <span className="m-dot" />
+          </Link>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="m-footer">
+        <div className="m-container">
+          <div className="m-footer__top">
+            <div className="m-footer__brand">
+              <h2 className="m-footer__logo">MAICOS</h2>
+              <p className="m-footer__tagline">Multi-Agent AI Company OS. Built for the ambitious.</p>
+              <div className="m-footer__socials">
+                {["GitHub","X","LinkedIn"].map(s => <a key={s} href="#" className="m-social" aria-label={s}>{s[0]}</a>)}
+              </div>
+            </div>
+            <div className="m-footer__links-group">
+              <div className="m-footer__col">
+                <p className="m-footer__col-title">Product</p>
+                <Link href="/command">Command</Link>
+                <Link href="/workflows">Workflows</Link>
+                <Link href="/agents">Agents</Link>
+                <Link href="/audit">Audit</Link>
+              </div>
+              <div className="m-footer__col">
+                <p className="m-footer__col-title">Company</p>
+                <Link href="#">About</Link>
+                <Link href="#">Blog</Link>
+                <Link href="#">Careers</Link>
+                <Link href="#">Contact</Link>
+              </div>
+              <div className="m-footer__col">
+                <p className="m-footer__col-title">Legal</p>
+                <Link href="#">Privacy</Link>
+                <Link href="#">Terms</Link>
+                <Link href="#">Security</Link>
+              </div>
+            </div>
+          </div>
+          <div className="m-footer__bottom">
+            <div className="m-footer__wordmark">MAICOS</div>
+            <p className="m-footer__copy">© 2026 MAICOS. All rights reserved.</p>
+          </div>
         </div>
       </footer>
-
-      <div className="footer-logo-wrap">
-        <h2 className="footer-logo-text" ref={logoTextRef}>
-          MAICOS
-        </h2>
-      </div>
-
-      <div className="video-container">
-        <video autoPlay muted loop playsInline id="bg-video">
-          <source src={`${ASSET_BASE}/flower.mp4`} type="video/mp4" />
-        </video>
-      </div>
-
-      <div id="cursor-ring" className="cursor-ring-outline" ref={cursorRingRef} />
-      <div id="glass-card" className="glass-cursor-card" ref={glassCardRef}>
-        <span className="cursor-card-text">
-          <span className="text-white">Run</span> Workflow!
-        </span>
-      </div>
     </div>
   );
 }
-  
