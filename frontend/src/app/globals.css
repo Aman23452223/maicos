@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap");
+/* Dashboard shared classes appended below */
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap");
 
 @tailwind base;
@@ -415,10 +416,72 @@ body:has(.maicos-landing) > div { display: block !important; }
 }
 .btn-ghost:hover { color: #e8edf3; border-color: rgba(255,255,255,0.2); }
 
-html,
-body {
-  background: #0b0d10;
-  color: #e6edf3;
+/* ─────────────────────────────────────────
+   DASHBOARD PAGE-LEVEL CLASSES
+───────────────────────────────────────── */
+
+/* Card */
+.card {
+  background: var(--bg-card, #111318);
+  border: 1px solid var(--border, rgba(255,255,255,0.07));
+  border-radius: 12px;
+}
+
+/* Pill / state badges */
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 0.2rem 0.65rem; border-radius: 9999px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.pill-ok   { background: rgba(57,255,20,0.12); color: #39ff14; }
+.pill-warn { background: rgba(255,200,0,0.12); color: #ffc800; }
+.pill-bad  { background: rgba(255,60,60,0.12);  color: #ff4d4d; }
+.pill-muted{ background: rgba(255,255,255,0.06); color: rgba(232,237,243,0.55); }
+
+/* Color tokens for dashboard */
+.bg-panel  { background: rgba(255,255,255,0.07); }
+.text-ink  { color: #e8edf3; }
+
+/* Grid utilities (Tailwind fallbacks) */
+.grid { display: grid; }
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.gap-4 { gap: 1rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-1 { gap: 0.25rem; }
+.p-4 { padding: 1rem; }
+.p-3 { padding: 0.75rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-3 { margin-top: 0.75rem; }
+.mt-4 { margin-top: 1rem; }
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.w-full { width: 100%; }
+.w-64 { width: 16rem; }
+.h-32 { height: 8rem; }
+.hidden { display: none; }
+.rounded-lg { border-radius: 0.5rem; }
+.break-all { word-break: break-all; }
+.font-mono { font-family: ui-monospace, monospace; }
+.font-semibold { font-weight: 600; }
+.text-lg { font-size: 1.125rem; }
+.text-left { text-align: left; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.border-r { border-right: 1px solid rgba(255,255,255,0.08); }
+.flex-col { flex-direction: column; }
+.hover\:text-ink:hover { color: #e8edf3; }
+
+@media (min-width: 768px) {
+  .md\:flex { display: flex !important; }
+  .md\:flex-col { flex-direction: column; }
+}
+@media (min-width: 1024px) {
+  .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lg\:col-span-2 { grid-column: span 2 / span 2; }
+  .lg\:col-span-3 { grid-column: span 3 / span 3; }
 }
 
 /* ------------------------------------------------------------------ */
