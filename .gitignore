@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env (defence-in-depth — backend/ and frontend/ already have their own)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Node / Next
+node_modules/
+.next/
+out/
+build/
+
+# Vercel
+.vercel
+
+# Local runtime stores (proof + connectors)
+var/
+
+# Secrets — never commit
+*.pem
+*.key
+service-account*.json
+gha-*.json

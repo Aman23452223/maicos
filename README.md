@@ -19,10 +19,12 @@ sensitive actions behind approvals, and produces a completion summary.
 maicos/
 ├── backend/        FastAPI + SQLAlchemy + Alembic
 │   ├── app/        agents, orchestrator, workflow engine, approvals, RAG
+│   ├── scripts/    verify_supabase — DB + pgvector smoke test
 │   ├── tests/      pytest suite + end-to-end proof
 │   └── pyproject.toml
 ├── frontend/       Next.js 14 (App Router, Tailwind)
 │   └── src/app/    Loopstack-inspired hero at /, dashboard after
+│   │                /login for optional Supabase auth
 ├── infra/          docker-compose for Postgres+pgvector, Redis, backend, worker, frontend
 ├── docs/
 │   ├── PRD-mapping.md     PRD section → file path
@@ -34,6 +36,7 @@ maicos/
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── vercel.json     Vercel project config (root = frontend)
 ├── DEPLOY.md       end-to-end push + deploy runbook
+├── SUPABASE_SETUP.md  Supabase Postgres + auth wiring (env-only, no leaks)
 └── VERCEL_SETUP.md Vercel OIDC + token-fallback setup
 ```
 
@@ -82,6 +85,19 @@ End-to-end proof (no DB required, runs in-process):
 ```bash
 cd backend
 python -m tests.proof_onboarding
+```
+
+### Hosted Postgres (Supabase)
+
+For dev / prod hosting, point `backend/.env` at a Supabase project.
+Full step-by-step is in **[`SUPABASE_SETUP.md`](SUPABASE_SETUP.md)**,
+including pgvector enablement, transaction-pooler vs direct URL, and
+the GitHub / Vercel secret mapping. Smoke-test your connection
+without writing anything:
+
+```bash
+cd backend
+python -m scripts.verify_supabase
 ```
 
 ---

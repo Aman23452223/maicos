@@ -125,7 +125,11 @@ setup is in **[VERCEL_SETUP.md](./VERCEL_SETUP.md)**. Quick version:
    - **Build Command:** `npm run build`
 2. In Vercel project settings, enable **OIDC for GitHub**.
 3. Add the resulting OIDC token to GitHub secrets as
-   `VERCEL_OIDC_TOKEN`. Also add `NEXT_PUBLIC_API_URL`.
+   `VERCEL_OIDC_TOKEN`. Also add `NEXT_PUBLIC_API_URL` and, if you
+   use hosted Supabase auth, the three Supabase env vars
+   (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `NEXT_PUBLIC_SUPABASE_ENABLED=true`) — see
+   **[SUPABASE_SETUP.md](./SUPABASE_SETUP.md)** §4.2.
 4. Branch protection on `main` (require PR + status checks).
 5. Push → PR preview URL; merge → production URL.
 
@@ -156,6 +160,10 @@ Required GitHub secrets:
 
 - `VERCEL_OIDC_TOKEN` — see VERCEL_SETUP.md
 - `NEXT_PUBLIC_API_URL` — public URL of the backend
+- `SUPABASE_DB_URL` — transaction-pooler connection string (see SUPABASE_SETUP.md §5)
+- `SUPABASE_DB_URL_DIRECT` — direct connection string (port 5432) for Alembic
+- (Optional) `SUPABASE_PROJECT_URL`, `SUPABASE_ANON_KEY` — only if backend
+  talks to Supabase APIs directly
 - (Optional) `OPENROUTER_API_KEY` — enables the live LLM smoke test
 
 ---
