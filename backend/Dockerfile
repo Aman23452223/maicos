@@ -9,5 +9,8 @@ RUN pip install --no-cache-dir -U pip \
 COPY backend/app ./app
 COPY backend/alembic ./alembic
 COPY backend/alembic.ini ./
+COPY backend/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# `start.sh` waits for DATABASE_URL, runs migrations, then execs uvicorn.
+CMD ["/app/start.sh"]
