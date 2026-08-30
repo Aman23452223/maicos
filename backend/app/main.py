@@ -10,6 +10,7 @@ from app import agents  # noqa: F401  (registers agents + connectors)
 from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.queue.jobs import redis_enabled
 from app.scheduler import shutdown as scheduler_shutdown
 from app.scheduler import start as scheduler_start
 
@@ -19,11 +20,20 @@ async def lifespan(app: FastAPI):
     configure_logging()
     log = get_logger("app")
     s = get_settings()
-    log.info("app.start", env=s.app_env, name=s.app_name)
-    scheduler_start()
-    yield
-    scheduler_shutdown()
-    log.info("app.stop")
+    log.info("app.start", env=s.app_env, name=s.app_name, redis=redis_enabled())
+    if redis_enabled():
+        scheduler_start()
+    else:
+        log.info(
+            "scheduler.skipped",
+            reason="REDIS_URL is empty; scheduled and event workflows disabled.",
+        )
+    try:
+        yield
+    finally:
+        if redis_enabled():
+            scheduler_shutdown()
+        log.info("app.stop")
 
 
 def create_app() -> FastAPI:
@@ -32,6 +42,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_origins,
+        allow_origin_regex=s.cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

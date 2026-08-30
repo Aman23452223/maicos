@@ -17,7 +17,7 @@ from app.core.logging import configure_logging, get_logger
 from app.db.session import SessionLocal
 from app.models.orm import Workflow
 from app.orchestrator import handle_objective
-from app.queue.jobs import dequeue
+from app.queue.jobs import dequeue, redis_enabled
 from app.workflow.engine import run as run_workflow
 
 log = get_logger("worker")
@@ -116,6 +116,9 @@ def _on_signal(_signo, _frame):
 
 if __name__ == "__main__":
     configure_logging()
+    if not redis_enabled():
+        log.warning("worker.exiting", reason="REDIS_URL is empty; nothing to consume.")
+        sys.exit(0)
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
     try:

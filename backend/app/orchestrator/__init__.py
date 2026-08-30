@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.agents.implementations.ai_manager import build_plan
 from app.audit.service import record
 from app.core.context import Principal
-from app.queue.jobs import Job, enqueue, new_job_id
+from app.queue.jobs import Job, enqueue, new_job_id, redis_enabled
 from app.workflow.engine import create_workflow
 from app.workflow.engine import run as run_workflow
 
@@ -136,6 +136,24 @@ def schedule(
             )
         )
 
+    if not redis_enabled():
+        record(
+            db,
+            company_id=principal.workspace_id,
+            actor=principal.user_id,
+            action="workflow.scheduled.skipped",
+            target_type="workflow",
+            target_id=job_id,
+            details={"reason": "redis_disabled", "run_at": run_at_iso, "objective": objective[:200]},
+        )
+        db.commit()
+        return {
+            "job_id": job_id,
+            "run_at": run_at_iso,
+            "scheduled": False,
+            "reason": "redis_disabled",
+        }
+
     get_scheduler().add_job(
         _fire, trigger=DateTrigger(run_date=run_at), id=job_id, replace_existing=True
     )
@@ -149,7 +167,7 @@ def schedule(
         details={"run_at": run_at_iso, "objective": objective[:200]},
     )
     db.commit()
-    return {"job_id": job_id, "run_at": run_at_iso}
+    return {"job_id": job_id, "run_at": run_at_iso, "scheduled": True}
 
 
 def trigger_event(
@@ -159,9 +177,15 @@ def trigger_event(
     event: str,
     data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Ingest an external event and enqueue a workflow (PRD FR-14)."""
+    """Ingest an external event and enqueue a workflow (PRD FR-14).
+
+    When Redis is not configured, the event is recorded in the audit log
+    but the workflow is not started (the worker would need Redis to
+    consume the job). The HTTP response still returns 200 with a
+    `queued` flag so the caller knows the side-effect did not happen.
+    """
     payload = {"event": event, "workspace_id": workspace_id, **(data or {})}
-    enqueue(
+    queued = enqueue(
         Job(
             id=new_job_id(),
             workflow_id="",
@@ -177,7 +201,7 @@ def trigger_event(
         action="workflow.event",
         target_type="event",
         target_id=event,
-        details=data or {},
+        details={**(data or {}), "queued": queued},
     )
     db.commit()
-    return {"queued": True, "event": event}
+    return {"queued": queued, "event": event}

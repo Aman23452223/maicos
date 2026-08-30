@@ -4,10 +4,10 @@ Maps to PRD §15 (secrets) and §27 (LLM must not see raw credentials):
 only configuration is loaded here, never model-side.
 """
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -26,7 +26,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://os:os@localhost:5432/os"
     vector_backend: str = "pgvector"
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = ""
+    # When REDIS_URL is empty, the queue and APScheduler are disabled
+    # and workflows run inline. Set REDIS_URL to enable async job
+    # processing, scheduled workflows, and event ingestion.
 
     llm_provider: str = "openrouter"
     llm_default_model: str = "minimax/minimax-m3:free"
@@ -38,10 +41,23 @@ class Settings(BaseSettings):
     openrouter_default_model: str = "minimax/minimax-m3:free"
 
     document_storage_dir: str = "./var/documents"
-    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+    # Comma-separated list. Wildcards ("*") are accepted in dev only.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["*"]
+    )
+    # Optional regex for Vercel preview URLs (*.vercel.app) etc.
+    # Empty by default; supply via CORS_ORIGIN_REGEX if you use previews.
+    cors_origin_regex: str = ""
 
     default_autonomy_level: int = 2
     approval_policy_json: str = "{}"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, v: Any) -> Any:
+        if isinstance(v, str) and v.strip():
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     def approval_policy(self) -> dict[str, Any]:
         import json
