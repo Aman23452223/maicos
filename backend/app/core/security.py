@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.context import Principal, set_principal
 from app.db.session import get_db
-from app.models.orm import User
 
 ALGORITHM = "HS256"
 
@@ -58,11 +57,15 @@ def get_current_principal(
 ) -> Principal:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
-    token = authorization.split(" ", 1)[1].strip()
-    payload = decode_token(token)
-    user = db.get(User, payload["sub"])
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="user inactive")
+
+    # Supabase Auth path: when configured, verify against the project's
+    # JWKS and provision a MAICOS user on first sight. MAICOS HS256
+    # tokens keep working — `supabase_auth.authenticate` auto-detects
+    # by inspecting the JWT header (Supabase tokens carry a `kid`).
+    from app.core.supabase_auth import authenticate as sb_authenticate
+
+    user = sb_authenticate(db, authorization=authorization)
+
     principal = Principal(
         user_id=user.id,
         workspace_id=user.company_id,

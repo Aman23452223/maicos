@@ -43,7 +43,7 @@ maicos/
 │   ├── tailwind.config.ts
 │   └── Dockerfile
 ├── infra/
-│   └── docker-compose.yml   Postgres+pgvector, Redis, backend, worker, frontend
+│   └── docker-compose.yml   Postgres+pgvector, backend, frontend (no Redis)
 ├── docs/
 │   ├── PRD-mapping.md
 │   └── proof-output.txt
@@ -139,8 +139,10 @@ the short-lived classic-token fallback (rotate, don't paste).
 ### If you self-host the backend (Render / Fly.io / a VM)
 
 1. Deploy the backend somewhere reachable from the public internet
-2. Set `DATABASE_URL`, `REDIS_URL`, `APP_SECRET_KEY` in the backend's
-   environment (use the host's secret store, not a `.env` file)
+2. Set `DATABASE_URL`, `APP_SECRET_KEY`, `CORS_ORIGINS` in the
+   backend's environment (use the host's secret store, not a `.env`
+   file). The Postgres database also serves the job queue and
+   scheduled jobs — **no Redis, no APScheduler** is needed.
 3. Put the public URL into Vercel's `NEXT_PUBLIC_API_URL`
 4. CORS: add your Vercel domain to the backend's `CORS_ORIGINS`
 

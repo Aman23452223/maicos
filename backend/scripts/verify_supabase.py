@@ -70,7 +70,7 @@ def main() -> int:
             conn.execute(text("select 1"))
         print("  connection closed cleanly")
         return 0
-    except Exception as exc:  # pragma: no cover - manual run
+    except Exception as exc:  # noqa: BLE001 - manual run  # pragma: no cover
         print(f"  FAILED: {exc}", file=sys.stderr)
         return 1
 

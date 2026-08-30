@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useRealtime } from "@/lib/realtime";
 import { statePillClass } from "@/lib/ui";
 import type { Workflow, WorkflowState } from "@/lib/types";
 
@@ -18,9 +19,16 @@ const STATE_FILTERS: { label: string; value: WorkflowState | "" }[] = [
 export default function WorkflowsPage() {
   const [filter, setFilter] = useState<WorkflowState | "">("");
   const key = `workflows-${filter || "all"}`;
-  const { data, error } = useSWR<Workflow[]>(key, () =>
+  const { data, error, mutate } = useSWR<Workflow[]>(key, () =>
     api.listWorkflows(filter || undefined),
   );
+  // Live updates from Supabase Realtime when enabled. Falls back to
+  // SWR polling when the channel is unavailable.
+  const realtime = useRealtime<Workflow>("workflows");
+  const liveWorkflows =
+    realtime.status === "ready" && realtime.data.length > 0
+      ? realtime.data
+      : (data ?? []);
   const [open, setOpen] = useState<Workflow | null>(null);
 
   return (
@@ -54,7 +62,10 @@ export default function WorkflowsPage() {
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((w) => (
+            {(filter
+              ? liveWorkflows.filter((w) => w.state === filter)
+              : liveWorkflows
+            ).map((w) => (
               <tr
                 key={w.id}
                 className="border-t border-line cursor-pointer hover:bg-line/30"
@@ -69,7 +80,7 @@ export default function WorkflowsPage() {
                 </td>
               </tr>
             ))}
-            {data && data.length === 0 && (
+            {liveWorkflows.length === 0 && (
               <tr>
                 <td colSpan={3} className="text-muted text-sm py-4">
                   No workflows yet. Submit one from the AI Command Center.

@@ -10,29 +10,28 @@ from app import agents  # noqa: F401  (registers agents + connectors)
 from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.queue.jobs import redis_enabled
-from app.scheduler import shutdown as scheduler_shutdown
-from app.scheduler import start as scheduler_start
+from app.queue.worker import start_worker, stop_worker
+
+log = get_logger("app")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
-    log = get_logger("app")
     s = get_settings()
-    log.info("app.start", env=s.app_env, name=s.app_name, redis=redis_enabled())
-    if redis_enabled():
-        scheduler_start()
-    else:
-        log.info(
-            "scheduler.skipped",
-            reason="REDIS_URL is empty; scheduled and event workflows disabled.",
-        )
+    log.info(
+        "app.start",
+        env=s.app_env,
+        name=s.app_name,
+        worker=s.worker_enabled,
+    )
+    if s.worker_enabled:
+        await start_worker()
     try:
         yield
     finally:
-        if redis_enabled():
-            scheduler_shutdown()
+        if s.worker_enabled:
+            await stop_worker()
         log.info("app.stop")
 
 

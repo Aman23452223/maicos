@@ -25,7 +25,7 @@ maicos/
 ├── frontend/       Next.js 14 (App Router, Tailwind)
 │   └── src/app/    Loopstack-inspired hero at /, dashboard after
 │   │                /login for optional Supabase auth
-├── infra/          docker-compose for Postgres+pgvector, Redis, backend, worker, frontend
+├── infra/          docker-compose for Postgres+pgvector, backend, frontend (no Redis)
 ├── docs/
 │   ├── PRD-mapping.md     PRD section → file path
 │   └── proof-output.txt   captured output of the end-to-end proof
@@ -63,17 +63,26 @@ maicos/
 ## Quick start (local)
 
 ```bash
-# 1. Start Postgres + Redis (any way you like)
+# 1. Start Postgres (any way you like) — pgvector extension optional locally
 cd backend
 cp .env.example .env
 pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
+```
 
-# 2. (Optional) Run the worker for scheduled / event workflows
+The FastAPI process runs the in-process Postgres worker by default
+(see `WORKER_ENABLED` in `.env.example`). To run the worker as a
+separate process instead:
+
+```bash
+WORKER_ENABLED=false uvicorn app.main:app --reload --port 8000
+# in another shell:
 python -m app.workers.scheduler
+```
 
-# 3. Frontend
+```bash
+# 2. Frontend
 cd ../frontend
 cp .env.example .env.local
 npm install
@@ -139,7 +148,8 @@ python -m scripts.verify_supabase
 - ✅ MVP scaffold + 10 agents + 3 file-backed connectors
 - ✅ Multi-tenant RBAC, audit log, approval center
 - ✅ Permission-scoped RAG with chunked retrieval
-- ✅ Redis-backed job queue + APScheduler + event webhooks
+- ✅ Postgres-backed job queue (`FOR UPDATE SKIP LOCKED` + `pg_notify`)
+- ✅ Scheduled workflows via `pg_cron` (no APScheduler)
 - ✅ Idempotency keys, workflow budgets
 - ✅ LLM planner (OpenAI, Anthropic, OpenRouter) with deterministic fallback
 - ✅ End-to-end proof validated against real on-disk stores

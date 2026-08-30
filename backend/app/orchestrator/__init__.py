@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.agents.implementations.ai_manager import build_plan
 from app.audit.service import record
 from app.core.context import Principal
-from app.queue.jobs import Job, enqueue, new_job_id, redis_enabled
+from app.queue import jobs as queue
 from app.workflow.engine import create_workflow
 from app.workflow.engine import run as run_workflow
 
@@ -60,14 +60,12 @@ def handle_objective(
         plan=plan,
     )
     if enqueue_async:
-        enqueue(
-            Job(
-                id=new_job_id(),
-                workflow_id=wf.id,
-                workspace_id=principal.workspace_id,
-                trigger="on_demand",
-                payload={"workflow_id": wf.id},
-            )
+        queue.enqueue(
+            db,
+            company_id=principal.workspace_id,
+            trigger="on_demand",
+            workflow_id=wf.id,
+            payload={"workflow_id": wf.id},
         )
         record(
             db,
@@ -111,63 +109,40 @@ def schedule(
     objective: str,
     run_at_iso: str,
 ) -> dict[str, Any]:
-    """Register a scheduled workflow to run at a future time (PRD FR-14)."""
+    """Register a scheduled workflow to run at a future time (PRD FR-14).
+
+    The row is written to `scheduled_jobs`; pg_cron dispatches it into
+    `workflow_jobs` at the due time. APScheduler is no longer used.
+    """
     from datetime import datetime
 
-    from apscheduler.triggers.date import DateTrigger
-
-    from app.scheduler import get_scheduler
+    from app.models.orm import ScheduledJob
 
     run_at = datetime.fromisoformat(run_at_iso)
-    job_id = new_job_id()
-    payload = {
-        "objective": objective,
-        "workspace_id": principal.workspace_id,
-    }
-
-    def _fire() -> None:
-        enqueue(
-            Job(
-                id=job_id,
-                workflow_id="",
-                workspace_id=principal.workspace_id,
-                trigger="scheduled",
-                payload=payload,
-            )
-        )
-
-    if not redis_enabled():
-        record(
-            db,
-            company_id=principal.workspace_id,
-            actor=principal.user_id,
-            action="workflow.scheduled.skipped",
-            target_type="workflow",
-            target_id=job_id,
-            details={"reason": "redis_disabled", "run_at": run_at_iso, "objective": objective[:200]},
-        )
-        db.commit()
-        return {
-            "job_id": job_id,
-            "run_at": run_at_iso,
-            "scheduled": False,
-            "reason": "redis_disabled",
-        }
-
-    get_scheduler().add_job(
-        _fire, trigger=DateTrigger(run_date=run_at), id=job_id, replace_existing=True
+    row = ScheduledJob(
+        company_id=principal.workspace_id,
+        objective=objective,
+        run_at=run_at,
+        created_by_user_id=principal.user_id,
     )
+    db.add(row)
+    db.flush()
     record(
         db,
         company_id=principal.workspace_id,
         actor=principal.user_id,
         action="workflow.scheduled",
         target_type="workflow",
-        target_id=job_id,
+        target_id=row.id,
         details={"run_at": run_at_iso, "objective": objective[:200]},
     )
     db.commit()
-    return {"job_id": job_id, "run_at": run_at_iso, "scheduled": True}
+    return {
+        "job_id": row.id,
+        "run_at": run_at_iso,
+        "scheduled": True,
+        "driver": "pg_cron",
+    }
 
 
 def trigger_event(
@@ -179,20 +154,15 @@ def trigger_event(
 ) -> dict[str, Any]:
     """Ingest an external event and enqueue a workflow (PRD FR-14).
 
-    When Redis is not configured, the event is recorded in the audit log
-    but the workflow is not started (the worker would need Redis to
-    consume the job). The HTTP response still returns 200 with a
-    `queued` flag so the caller knows the side-effect did not happen.
+    The job is written to the `workflow_jobs` table; the trigger from
+    `pg_notify` wakes the worker. No Redis dependency.
     """
     payload = {"event": event, "workspace_id": workspace_id, **(data or {})}
-    queued = enqueue(
-        Job(
-            id=new_job_id(),
-            workflow_id="",
-            workspace_id=workspace_id,
-            trigger="event",
-            payload=payload,
-        )
+    queue.enqueue(
+        db,
+        company_id=workspace_id,
+        trigger="event",
+        payload=payload,
     )
     record(
         db,
@@ -201,7 +171,7 @@ def trigger_event(
         action="workflow.event",
         target_type="event",
         target_id=event,
-        details={**(data or {}), "queued": queued},
+        details=data or {},
     )
     db.commit()
-    return {"queued": queued, "event": event}
+    return {"queued": True, "event": event, "driver": "postgres_queue"}

@@ -4,7 +4,7 @@ COPY backend/pyproject.toml ./
 RUN pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \
     pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] python-multipart \
-    httpx tenacity langgraph langchain langchain-openai redis apscheduler structlog \
+    httpx tenacity langgraph langchain langchain-openai structlog asyncpg \
     pgvector email-validator PyPDF2 python-docx openai
 COPY backend/app ./app
 COPY backend/alembic ./alembic

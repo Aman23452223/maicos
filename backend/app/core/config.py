@@ -27,9 +27,11 @@ class Settings(BaseSettings):
     vector_backend: str = "pgvector"
 
     redis_url: str = ""
-    # When REDIS_URL is empty, the queue and APScheduler are disabled
-    # and workflows run inline. Set REDIS_URL to enable async job
-    # processing, scheduled workflows, and event ingestion.
+    # MAICOS now uses Postgres for the job queue + scheduled jobs.
+    # This field is kept for backward compatibility with old config
+    # files; it is unused. See `workflow_jobs` and `scheduled_jobs`.
+    worker_enabled: bool = True
+    worker_id: str = "maicos-worker"
 
     llm_provider: str = "openrouter"
     llm_default_model: str = "minimax/minimax-m3:free"
@@ -48,6 +50,13 @@ class Settings(BaseSettings):
     # Optional regex for Vercel preview URLs (*.vercel.app) etc.
     # Empty by default; supply via CORS_ORIGIN_REGEX if you use previews.
     cors_origin_regex: str = ""
+
+    # --- Supabase ---
+    # When set, the backend verifies Supabase-issued JWTs (RS256) and
+    # provisions MAICOS users on first sight. MAICOS HS256 tokens keep
+    # working — the verifier auto-detects by inspecting the JWT header.
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
 
     default_autonomy_level: int = 2
     approval_policy_json: str = "{}"

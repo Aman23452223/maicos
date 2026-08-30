@@ -11,13 +11,31 @@ export function setToken(t: string | null) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+async function getAuthHeader(): Promise<Record<string, string>> {
+  // Prefer Supabase session if present — it carries the same JWT the
+  // backend will verify (RS256 against the project's JWKS).
+  const { isSupabaseEnabled, getSupabase } = await import("./supabase");
+  if (isSupabaseEnabled()) {
+    const client = getSupabase();
+    if (client) {
+      const { data } = await client.auth.getSession();
+      if (data.session?.access_token) {
+        return { Authorization: `Bearer ${data.session.access_token}` };
+      }
+    }
+  }
+  const local = getToken();
+  if (local) return { Authorization: `Bearer ${local}` };
+  return {};
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const auth = await getAuthHeader();
   const res = await fetch(`/api${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...auth,
       ...(init.headers || {}),
     },
   });

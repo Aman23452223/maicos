@@ -21,8 +21,6 @@ dependencies = [
   "langgraph>=0.1",
   "langchain>=0.2",
   "langchain-openai>=0.1",
-  "redis>=5.0",
-  "apscheduler>=3.10",
   "structlog>=24.1",
   "PyPDF2>=3.0",
   "python-docx>=1.1",
@@ -52,6 +50,6 @@ python_version = "3.11"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["apscheduler", "apscheduler.schedulers", "apscheduler.schedulers.background", "jose", "passlib", "passlib.context", "docx", "PyPDF2"]
+module = ["jose", "passlib", "passlib.context", "docx", "PyPDF2"]
 ignore_missing_imports = true
 
