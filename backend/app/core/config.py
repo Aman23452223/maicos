@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # files; it is unused. See `workflow_jobs` and `scheduled_jobs`.
     worker_enabled: bool = True
     worker_id: str = "maicos-worker"
+    # When true, the lifespan skips starting the in-process worker
+    # entirely. Useful for diagnostic deploys where the user wants
+    # to confirm the web process is up before turning the worker
+    # back on. Set WORKER_SKIP=true to enable.
+    worker_skip: bool = False
 
     llm_provider: str = "openrouter"
     llm_default_model: str = "minimax/minimax-m3:free"

@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
         else:
             log.error("migrate.failed", error=err)
 
-    if s.worker_enabled:
+    if s.worker_enabled and not s.worker_skip:
         try:
             await start_worker()
         except Exception as exc:  # noqa: BLE001
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        if s.worker_enabled:
+        if s.worker_enabled and not s.worker_skip:
             try:
                 await stop_worker()
             except Exception as exc:  # noqa: BLE001
