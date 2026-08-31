@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://maicos-production.up.railway.app/api/$1"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
