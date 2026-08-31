@@ -1,10 +1,13 @@
 FROM python:3.11-slim
 WORKDIR /app
-# Build cache buster — bump to force Railway/Render to rebuild
-# without using a cached layer.
-ARG CACHE_BUST=2025-08-31-001
+# Build cache buster — referenced by the next COPY so the pip-install
+# layer is invalidated every time CACHE_BUST is bumped. This forces
+# Railway/Render to actually rebuild instead of serving a stale
+# cached image.
+ARG CACHE_BUST=2025-08-31-002
 COPY backend/pyproject.toml ./
-RUN pip install --no-cache-dir -U pip \
+RUN echo "cache-bust=$CACHE_BUST" \
+ && pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \
     pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] python-multipart \
     httpx tenacity langgraph langchain langchain-openai structlog \
