@@ -11,21 +11,33 @@
 # uvicorn still starts. API requests will then return 500 until the
 # variable is configured, but the service stays healthy enough for
 # the platform to keep the container up.
-set -e
+#
+# Note: we deliberately do NOT use `set -e` so that a failed
+# `alembic upgrade head` does not abort the script before uvicorn
+# is launched. The script is the supervisor; its job is to keep
+# the API process running no matter what.
+set +e
 
 echo "[start] pid=$$ waiting for DATABASE_URL..."
-for i in $(seq 1 30); do
+i=0
+while [ $i -lt 30 ]; do
     if [ -n "${DATABASE_URL:-}" ]; then
         echo "[start] DATABASE_URL present after ${i}s"
         break
     fi
+    i=$((i + 1))
     sleep 1
 done
 
 if [ -n "${DATABASE_URL:-}" ]; then
     echo "[start] running alembic upgrade head"
-    if ! alembic upgrade head; then
-        echo "[start] alembic failed; starting uvicorn anyway"
+    alembic upgrade head >/tmp/alembic.log 2>&1
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "[start] alembic ok"
+    else
+        echo "[start] alembic failed rc=$rc; starting uvicorn anyway"
+        tail -n 20 /tmp/alembic.log
     fi
 else
     echo "[start] DATABASE_URL not set after 30s; skipping migrations"

@@ -14,7 +14,16 @@ class Base(DeclarativeBase):
 
 
 _settings = get_settings()
-engine = create_engine(_settings.database_url, pool_pre_ping=True, future=True)
+# Connect timeout = 5s so a missing DATABASE_URL fails fast instead of
+# hanging each request for 30+ seconds (which makes the platform
+# return 502). `pool_pre_ping=True` keeps stale connections out of the
+# pool after Postgres restarts.
+engine = create_engine(
+    _settings.database_url,
+    pool_pre_ping=True,
+    future=True,
+    connect_args={"connect_timeout": 5},
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
