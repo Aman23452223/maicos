@@ -17,6 +17,25 @@ from app.queue.worker import start_worker, stop_worker
 log = get_logger("app")
 
 
+def _run_alembic_upgrade() -> tuple[bool, str]:
+    r"""Run `alembic upgrade head` in-process.
+
+    Returns (ok, error_message). Errors are non-fatal so the API still
+    comes up — operators can run the migration manually from the
+    Railway shell if needed.
+    """
+    try:
+        from alembic.config import Config
+
+        from alembic import command
+
+        cfg = Config("alembic.ini")
+        command.upgrade(cfg, "head")
+        return True, ""
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
@@ -26,21 +45,37 @@ async def lifespan(app: FastAPI):
         env=s.app_env,
         name=s.app_name,
         worker=s.worker_enabled,
+        database_url=_redact(s.database_url),
     )
     # Verify database connectivity at startup so a missing DATABASE_URL
     # or bad credentials fail fast (and visibly in the deploy logs)
     # instead of producing opaque 502s on the first request.
+    db_ok = False
+    db_err: str | None = None
     try:
         db = SessionLocal()
         try:
             db.execute(text("SELECT 1"))
+            db_ok = True
             log.info("db.connect_ok", url_redacted=_redact(s.database_url))
         finally:
             db.close()
     except Exception as exc:  # noqa: BLE001
-        log.error("db.connect_failed", error=str(exc), url_redacted=_redact(s.database_url))
-        # Do not abort — Railway will keep the container up and
-        # /api/v1/diag below will surface the error to operators.
+        db_err = str(exc)
+        log.error(
+            "db.connect_failed",
+            error=db_err,
+            url_redacted=_redact(s.database_url),
+        )
+
+    # Auto-migrate on startup, but only if the DB is reachable.
+    if db_ok and s.worker_enabled:
+        log.info("migrate.start")
+        ok, err = _run_alembic_upgrade()
+        if ok:
+            log.info("migrate.ok")
+        else:
+            log.error("migrate.failed", error=err)
 
     if s.worker_enabled:
         try:
