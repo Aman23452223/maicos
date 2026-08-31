@@ -2,10 +2,18 @@ FROM python:3.11-slim
 WORKDIR /app
 # Build cache buster — bump to force Railway/Render to rebuild
 # without using a cached layer.
-ARG CACHE_BUST=2025-08-31-001
-COPY backend/pyproject.toml ./
-RUN pip install --no-cache-dir -U pip \
- && pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \
+ARG CACHE_BUST=2025-09-01-001
+# Force Python to flush stdout/stderr immediately so Railway's log
+# stream sees the boot prints without buffering.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+# Print the env we're running in before pip install — useful when
+# inspecting the build log to confirm Railway's PORT / DATABASE_URL
+# etc. reached the container.
+RUN echo "[build] CACHE_BUST=$CACHE_BUST" && \
+    echo "[build] starting pip install at $(date -u +%FT%TZ)" && \
+    pip install --no-cache-dir -U pip
+RUN pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \
     pydantic pydantic-settings python-jose[cryptography] passlib[bcrypt] python-multipart \
     httpx tenacity langgraph langchain langchain-openai structlog \
     pgvector email-validator PyPDF2 python-docx openai
@@ -15,4 +23,7 @@ COPY backend/alembic.ini ./
 EXPOSE 8000
 # Migrations run inside the FastAPI lifespan (see app/main.py) so we
 # do not need a shell wrapper. Uvicorn starts immediately.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# The wrapper script ensures the deploy log always shows the
+# uvicorn banner even if the env module is missing — and applies
+# the alembic migration before listening (idempotent).
+CMD ["sh", "-c", "echo '[start] PORT=${PORT:-8000} PYTHONUNBUFFERED='$PYTHONUNBUFFERED; echo '[start] DATABASE_URL='$DATABASE_URL; echo '[start] running alembic upgrade head'; alembic upgrade head 2>&1 || echo '[start] alembic migration failed, continuing anyway'; echo '[start] starting uvicorn on port ${PORT:-8000}'; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info"]
