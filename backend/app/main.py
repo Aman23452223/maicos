@@ -61,11 +61,39 @@ async def lifespan(app: FastAPI):
         worker=s.worker_enabled,
         database_url=_redact(s.database_url),
     )
-    # Verify database connectivity at startup so a missing DATABASE_URL
-    # or bad credentials fail fast (and visibly in the deploy logs)
-    # instead of producing opaque 502s on the first request.
-    # The check is bounded by `DB_STARTUP_TIMEOUT` (default 10s) so a
-    # broken DNS or unreachable host cannot hold up uvicorn.
+    # Yield to uvicorn FIRST so the process is accepting requests
+    # before any background work runs. /health will respond 200
+    # immediately, which is the only thing Railway's health
+    # check needs.
+    yield_start = asyncio.create_task(_lifespan_init(s, log, _redact))
+    try:
+        yield
+    finally:
+        # Best-effort cleanup of the background init task if still
+        # running when uvicorn is shutting down.
+        yield_start.cancel()
+        if s.worker_enabled and not s.worker_skip:
+            try:
+                await stop_worker()
+            except Exception as exc:  # noqa: BLE001
+                log.error("worker.stop_failed", error=str(exc))
+        log.info("app.stop")
+
+
+async def _lifespan_init(s, log, redact) -> None:
+    """All post-yield startup work: DB check, migrations, worker.
+
+    Runs in the background so the FastAPI process is accepting
+    HTTP traffic as soon as the lifespan is entered. If the DB is
+    unreachable, the API still serves /health and /api/v1/diag
+    (which itself reports db.ok=false), but every other route will
+    return 500 until the DB comes back. The `db_startup_timeout`
+    env cap (default 10s) bounds the worst-case delay.
+    """
+    # Verify database connectivity at startup so a missing
+    # DATABASE_URL or bad credentials fail fast (and visibly in the
+    # deploy logs) instead of producing opaque 502s on the first
+    # request.
     db_ok = False
     db_err: str | None = None
     try:
@@ -74,18 +102,18 @@ async def lifespan(app: FastAPI):
             timeout=s.db_startup_timeout,
         )
         if db_ok:
-            log.info("db.connect_ok", url_redacted=_redact(s.database_url))
+            log.info("db.connect_ok", url_redacted=redact(s.database_url))
         else:
             log.error(
                 "db.connect_failed",
                 error=db_err,
-                url_redacted=_redact(s.database_url),
+                url_redacted=redact(s.database_url),
             )
     except TimeoutError:
         log.error(
             "db.connect_timeout",
             timeout_seconds=s.db_startup_timeout,
-            url_redacted=_redact(s.database_url),
+            url_redacted=redact(s.database_url),
         )
     except Exception as exc:  # noqa: BLE001
         log.error("db.connect_unexpected", error=str(exc))
@@ -104,15 +132,6 @@ async def lifespan(app: FastAPI):
             await start_worker()
         except Exception as exc:  # noqa: BLE001
             log.error("worker.start_failed", error=str(exc))
-    try:
-        yield
-    finally:
-        if s.worker_enabled and not s.worker_skip:
-            try:
-                await stop_worker()
-            except Exception as exc:  # noqa: BLE001
-                log.error("worker.stop_failed", error=str(exc))
-        log.info("app.stop")
 
 
 def _check_db() -> tuple[bool, str | None]:

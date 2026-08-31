@@ -6,7 +6,7 @@
     "buildCommand": null
   },
   "deploy": {
-    "startCommand": "bash -c 'alembic upgrade head 2>&1 || true; uvicorn app.main:app --host 0.0.0.0 --port $PORT'",
+    "startCommand": "bash -c 'set +e; echo \"[start] PID=$$ PORT=$PORT WORKER_ID=${WORKER_ID:-unset} PYTHONUNBUFFERED=${PYTHONUNBUFFERED:-0}\"; echo \"[start] DATABASE_URL set: $([ -n \"$DATABASE_URL\" ] && echo yes || echo no)\"; echo \"[start] running alembic upgrade head (max 15s)\"; timeout 15 alembic upgrade head 2>&1; rc=$?; if [ $rc -ne 0 ] && [ $rc -ne 124 ]; then echo \"[start] alembic returned rc=$rc, continuing\"; elif [ $rc -eq 124 ]; then echo \"[start] alembic timed out, continuing\"; else echo \"[start] alembic ok\"; fi; echo \"[start] starting uvicorn on port $PORT\"; exec uvicorn app.main:app --host 0.0.0.0 --port \"$PORT\" --log-level info --proxy-headers --forwarded-allow-ips=\"*\"'",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3,
     "healthcheckPath": "/health",
