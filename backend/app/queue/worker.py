@@ -3,7 +3,9 @@
 This replaces the previous Redis BLPOP-based worker. The worker runs
 inside the FastAPI process (started in `app.main.lifespan`) and:
 
-  1. subscribes to the `maicos_jobs` Postgres NOTIFY channel
+  1. subscribes to the `maicos_jobs` Postgres NOTIFY channel (via
+     psycopg2 — same driver the rest of the app uses, so DNS and
+     auth match exactly)
   2. on every wake-up, calls `dequeue()` to atomically claim a row
   3. dispatches the job to a handler by `trigger` (on_demand, scheduled, event)
   4. marks the row COMPLETED / FAILED and continues
@@ -182,24 +184,35 @@ def _mark_failed(job_id: str, error: str, *, dead: bool = False) -> None:
 
 
 async def _listen_loop(stop: asyncio.Event) -> None:
-    """LISTEN maicos_jobs loop. Falls back to polling on any error."""
-    import asyncpg  # local import to keep startup fast
+    """LISTEN maicos_jobs loop.
 
-    from app.core.config import get_settings
+    Implemented with psycopg2 (the same driver used by SQLAlchemy
+    throughout the app) rather than asyncpg, so DNS resolution and
+    auth settings match the rest of the stack. On any failure, the
+    loop sleeps and retries — it never raises out.
 
-    settings = get_settings()
+    The polling fallback in `_poll_loop` runs in parallel, so a
+    broken LISTEN does not stop job processing.
+    """
+    import psycopg2
+    import psycopg2.extensions
+
     while not stop.is_set():
+        conn = None
         try:
-            conn = await asyncpg.connect(
-                dsn=settings.database_url.replace(
-                    "postgresql+psycopg2://", "postgresql://"
-                )
+            dsn = _to_psycopg2_dsn(get_settings().database_url)
+            conn = psycopg2.connect(dsn, connect_timeout=5)
+            conn.set_isolation_level(
+                psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
             )
-            await conn.add_listener("maicos_jobs", lambda *_: _drain_once())
+            cur = conn.cursor()
+            cur.execute("LISTEN maicos_jobs")
+            cur.close()
             log.info("worker.listening", channel="maicos_jobs")
-            # Block until stopped; the callback does the work.
-            await stop.wait()
-            await conn.close()
+            # Run the blocking select/poll in a thread so the asyncio
+            # event loop is never starved. The thread exits when `stop`
+            # is set.
+            await asyncio.to_thread(_psycopg2_listen_thread, conn, stop)
         except Exception as exc:  # noqa: BLE001 - reconnect on any error
             log.warning(
                 "worker.listen_failed",
@@ -212,6 +225,51 @@ async def _listen_loop(stop: asyncio.Event) -> None:
                 pass
         else:
             return
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("worker.listen_close_failed", error=str(exc))
+
+
+def _to_psycopg2_dsn(url: str) -> str:
+    """Convert a SQLAlchemy-style URL to a libpq DSN for psycopg2."""
+    if url.startswith("postgresql+psycopg2://"):
+        return url.replace("postgresql+psycopg2://", "postgresql://", 1)
+    if url.startswith("postgresql+psycopg://"):
+        return url.replace("postgresql+psycopg://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        return url
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://") :]
+    return url
+
+
+def _psycopg2_listen_thread(conn, stop: asyncio.Event) -> None:
+    """Blocking loop: select on the libpq socket, drain jobs on each NOTIFY.
+
+    Runs in a thread (via asyncio.to_thread). The thread checks the
+    asyncio.Event between waits and exits within ~1 second after the
+    event is set.
+    """
+    import select
+
+    while not stop.is_set():
+        if select.select([conn], [], [], 1.0) != ([], [], []):
+            conn.poll()
+            while conn.notifies:
+                conn.notifies.pop(0)
+                # Run the job claim/dispatch inline. This is the
+                # same synchronous helper used by the polling loop.
+                try:
+                    _drain_once()
+                except Exception:
+                    import logging
+
+                    logging.getLogger("worker").exception(
+                        "worker.drain_failed",
+                    )
 
 
 async def _poll_loop(stop: asyncio.Event) -> None:
