@@ -1,6 +1,20 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import os
+import sys
+
+# Emit a line as the very first thing the worker process does. This
+# lands in the Railway deploy log and confirms that the CMD we set in
+# the Dockerfile actually ran. Helps diagnose "502 Application failed
+# to respond" — if this line never appears, uvicorn never started.
+print(
+    f"[boot] maicos main module loaded pid={os.getpid()} "
+    f"python={sys.version.split()[0]} port={os.environ.get('PORT', 'unset')}",
+    file=sys.stderr,
+    flush=True,
+)
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
