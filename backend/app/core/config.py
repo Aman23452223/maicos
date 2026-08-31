@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # to confirm the web process is up before turning the worker
     # back on. Set WORKER_SKIP=true to enable.
     worker_skip: bool = False
+    # Hard upper bound on how long the lifespan waits for the
+    # startup DB connectivity check. A broken DNS or unreachable
+    # host must not hold up uvicorn beyond this many seconds.
+    db_startup_timeout: float = 10.0
 
     llm_provider: str = "openrouter"
     llm_default_model: str = "minimax/minimax-m3:free"

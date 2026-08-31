@@ -6,8 +6,10 @@
     "buildCommand": null
   },
   "deploy": {
-    "startCommand": null,
+    "startCommand": "bash -c 'alembic upgrade head 2>&1 || true; uvicorn app.main:app --host 0.0.0.0 --port $PORT'",
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 3
+    "restartPolicyMaxRetries": 3,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 30
   }
 }

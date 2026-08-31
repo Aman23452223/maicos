@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 WORKDIR /app
+# Build cache buster — bump to force Railway/Render to rebuild
+# without using a cached layer.
+ARG CACHE_BUST=2025-08-31-001
 COPY backend/pyproject.toml ./
 RUN pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy alembic psycopg2-binary \

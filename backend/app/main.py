@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 
@@ -11,7 +12,6 @@ import sys
 print(
     f"[boot] maicos main module loaded pid={os.getpid()} "
     f"python={sys.version.split()[0]} port={os.environ.get('PORT', 'unset')}",
-    file=sys.stderr,
     flush=True,
 )
 
@@ -64,23 +64,31 @@ async def lifespan(app: FastAPI):
     # Verify database connectivity at startup so a missing DATABASE_URL
     # or bad credentials fail fast (and visibly in the deploy logs)
     # instead of producing opaque 502s on the first request.
+    # The check is bounded by `DB_STARTUP_TIMEOUT` (default 10s) so a
+    # broken DNS or unreachable host cannot hold up uvicorn.
     db_ok = False
     db_err: str | None = None
     try:
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            db_ok = True
+        db_ok, db_err = await asyncio.wait_for(
+            asyncio.to_thread(_check_db),
+            timeout=s.db_startup_timeout,
+        )
+        if db_ok:
             log.info("db.connect_ok", url_redacted=_redact(s.database_url))
-        finally:
-            db.close()
-    except Exception as exc:  # noqa: BLE001
-        db_err = str(exc)
+        else:
+            log.error(
+                "db.connect_failed",
+                error=db_err,
+                url_redacted=_redact(s.database_url),
+            )
+    except TimeoutError:
         log.error(
-            "db.connect_failed",
-            error=db_err,
+            "db.connect_timeout",
+            timeout_seconds=s.db_startup_timeout,
             url_redacted=_redact(s.database_url),
         )
+    except Exception as exc:  # noqa: BLE001
+        log.error("db.connect_unexpected", error=str(exc))
 
     # Auto-migrate on startup, but only if the DB is reachable.
     if db_ok and s.worker_enabled:
@@ -105,6 +113,18 @@ async def lifespan(app: FastAPI):
             except Exception as exc:  # noqa: BLE001
                 log.error("worker.stop_failed", error=str(exc))
         log.info("app.stop")
+
+
+def _check_db() -> tuple[bool, str | None]:
+    """Run a SELECT 1 and report success / failure. Synchronous."""
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return True, None
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    finally:
+        db.close()
 
 
 def _redact(url: str) -> str:

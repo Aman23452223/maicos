@@ -293,9 +293,22 @@ async def start_worker() -> None:
     s = get_settings()
     _worker_id = s.worker_id or f"{socket.gethostname()}:{os.getpid()}"
     _stop_event = asyncio.Event()
-    listen_task = asyncio.create_task(_listen_loop(_stop_event), name="worker-listen")
-    poll_task = asyncio.create_task(_poll_loop(_stop_event), name="worker-poll")
-    _worker_task = asyncio.gather(listen_task, poll_task)
+
+    async def _guarded(coro):
+        try:
+            await coro
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - never let worker kill uvicorn
+            log.error("worker.task_crashed", error=str(exc))
+
+    listen_task = asyncio.create_task(
+        _guarded(_listen_loop(_stop_event)), name="worker-listen"
+    )
+    poll_task = asyncio.create_task(
+        _guarded(_poll_loop(_stop_event)), name="worker-poll"
+    )
+    _worker_task = asyncio.gather(listen_task, poll_task, return_exceptions=True)
     log.info("worker.start", id=_worker_id)
 
 
