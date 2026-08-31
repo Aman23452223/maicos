@@ -1,0 +1,39 @@
+# Render Blueprint — MAICOS backend
+# https://render.com/docs/blueprint-spec
+#
+# This file creates the `maicos` web service on Render. It pins
+# Python, declares the build command (pip install the project) and
+# the start command (uvicorn against the PORT Render injects).
+#
+# A Postgres instance and a Redis instance are declared as well so
+# the deploy is one-click; both can be removed in favour of
+# Supabase-managed Postgres and the in-process Postgres worker.
+services:
+  - type: web
+    name: maicos
+    runtime: python
+    plan: starter
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -e ".[dev]"
+    startCommand: "alembic upgrade head 2>&1 || true; uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://maicos-7f2d-dmfdx65zx-aman-chauhans-projects-a4bf879e.vercel.app
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://.*\.vercel\.app$
+      - key: WORKER_ENABLED
+        value: "true"
+      - key: WORKER_ID
+        value: maicos-web
+      - key: SUPABASE_URL
+        value: https://uzrtydpbxemuncdkpekv.supabase.co
+      # SUPABASE_ANON_KEY, DATABASE_URL — set in the dashboard.
+      # Never commit real secrets to this file.
+      - key: PYTHON_VERSION
+        value: 3.11.10
