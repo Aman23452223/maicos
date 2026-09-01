@@ -9,7 +9,8 @@ This isolates whether the Railway 502 is caused by the build
 image, the env vars, or something specific to app/main.py.
 If this comes up on Railway, the issue is in the main app.
 If this also fails, the issue is in the build/env.
-"""from fastapi import FastAPI
+"""
+from fastapi import FastAPI
 
 app = FastAPI(title="MAICOS Smoke Test")
 
