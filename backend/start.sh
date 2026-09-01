@@ -6,10 +6,20 @@ echo "[start] container alive at $(date -u +%FT%TZ)"
 # Check environment
 echo "[start] PORT=$PORT"
 echo "[start] DATABASE_URL is set: $([ -n "$DATABASE_URL" ] && echo yes || echo no)"
+if [ -n "$DATABASE_URL" ]; then
+    echo "[start] DATABASE_URL length: ${#DATABASE_URL}"
+    echo "[start] DATABASE_URL first 60 chars: ${DATABASE_URL:0:60}"
+fi
 
 # Print pre-flight diagnostics
 python --version
 python -c "import sys; print('[start] sys.path:', sys.path[:3])"
+
+# CRITICAL: write a marker file Railway's edge can use to verify
+# the container is alive
+mkdir -p /tmp
+echo "alive" > /tmp/maicos-alive
+echo "[start] marker written: /tmp/maicos-alive"
 
 # If SMOKE_TEST env var is set OR the main-app-passed marker doesn't exist,
 # run the minimal smoke app
