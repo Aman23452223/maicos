@@ -1,0 +1,34 @@
+# Build context exclusions for the backend Docker image.
+# The Dockerfile uses `COPY backend/...` paths, so this file is
+# effectively scoped to the backend/ directory contents.
+# Keep this in sync with backend/.gitignore plus any extra
+# runtime-only artefacts that should never enter the image.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+.tox/
+.cache/
+.pyre/
+
+# runtime data created by `proof_onboarding` and the connectors
+var/
+
+# local secrets
+.env
+.env.local
+.env.*.local
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

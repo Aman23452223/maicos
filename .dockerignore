@@ -1,0 +1,59 @@
+# Build context exclusions for ALL Dockerfiles in the repo.
+# The Railway Dockerfile uses `COPY backend/...` paths and the
+# build context is the repo root, so a root-level .dockerignore
+# is what actually filters the paths that the build sees.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+.tox/
+.cache/
+.pyre/
+
+# Python egg/build artifacts
+*.egg-info/
+build/
+dist/
+
+# local secrets — never enter an image
+.env
+.env.local
+.env.*.local
+
+# runtime data created by the proof_onboarding script and the
+# connector stores; must not enter the backend image
+backend/var/
+backend/tests/.cache/
+
+# frontend
+node_modules/
+.next/
+.vercel/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# docs and human-facing files we don't need in the image
+README.md
+DEPLOY.md
+MORNING_CHECKLIST.md
+RUNTIME_ISSUE.md
+SUPABASE_*.md
+VERCEL_SETUP.md
+docs/
+infra/
+render.yaml
+runtime.txt
+Procfile
+requirements.txt
