@@ -30,7 +30,12 @@ class Settings(BaseSettings):
     # MAICOS now uses Postgres for the job queue + scheduled jobs.
     # This field is kept for backward compatibility with old config
     # files; it is unused. See `workflow_jobs` and `scheduled_jobs`.
-    worker_enabled: bool = True
+    # DEFAULT FALSE in production — the in-process worker has been
+    # observed to crash the deploy on Railway (uvicorn process 1
+    # exited with code 1, deploy marked Removed). Toggle back to true
+    # via the WORKER_ENABLED env var once the underlying crash is
+    # diagnosed via the deploy logs.
+    worker_enabled: bool = False
     worker_id: str = "maicos-worker"
     # When true, the lifespan skips starting the in-process worker
     # entirely. Useful for diagnostic deploys where the user wants
