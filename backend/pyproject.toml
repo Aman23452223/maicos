@@ -38,6 +38,16 @@ dev = [
 line-length = 100
 target-version = "py311"
 
+[tool.setuptools]
+# Explicitly declare which directories are part of the package.
+# Without this, setuptools auto-discovers everything in the
+# project root and fails with "Multiple top-level packages
+# discovered" if there are stray directories (e.g. a runtime
+# `var/` produced by `proof_onboarding`).
+packages = ["app"]
+include-package-data = true
+zip-safe = false
+
 [tool.ruff.lint]
 # B008 is the standard FastAPI `Depends(...)` pattern; the check is a false
 # positive in this project. Other rules are kept at defaults.
