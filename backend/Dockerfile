@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 WORKDIR /app
 # Build cache buster — bump to force Railway/Render to rebuild
-# without using a cached layer.
-ARG CACHE_BUST=2025-09-01-001
+# without using a cached layer. This is the CACHE_BUST that
+# currently in production: 2026-09-01-002.
+ARG CACHE_BUST=2026-09-01-002
 # Force Python to flush stdout/stderr immediately so Railway's log
 # stream sees the boot prints without buffering.
 ENV PYTHONUNBUFFERED=1 \
