@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
@@ -18,13 +19,16 @@ _settings = get_settings()
 # hanging each request for 30+ seconds (which makes the platform
 # return 502). `pool_pre_ping=True` keeps stale connections out of the
 # pool after Postgres restarts.
-engine = create_engine(
+# `future=True` enables SQLAlchemy 2.0-style usage.
+engine: Engine = create_engine(
     _settings.database_url,
     pool_pre_ping=True,
     future=True,
     connect_args={"connect_timeout": 5},
 )
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+SessionLocal: sessionmaker[Session] = sessionmaker(
+    bind=engine, autoflush=False, autocommit=False, future=True
+)
 
 
 def get_db() -> Iterator[Session]:
