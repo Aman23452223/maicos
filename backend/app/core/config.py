@@ -3,10 +3,11 @@
 Maps to PRD §15 (secrets) and §27 (LLM must not see raw credentials):
 only configuration is loaded here, never model-side.
 """
+import re
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -81,6 +82,26 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip():
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
+
+    @model_validator(mode="after")
+    def _reject_unresolved_placeholders(self) -> "Settings":
+        """Catch config values that still contain template placeholders.
+
+        The .env.example file uses <PASSWORD>, <REGION>, <PROJECT_REF>
+        as illustrative placeholders. If a user copy-pastes one of
+        those lines into Railway Variables without filling them in, the
+        app would otherwise start, log a useless
+        'could not translate host name "<REGION>"' error, and 502.
+        Fail fast at startup instead.
+        """
+        placeholders = re.findall(r"<[A-Z_]+>", self.database_url)
+        for ph in placeholders:
+            raise ValueError(
+                f"DATABASE_URL still contains an unresolved placeholder "
+                f"{ph!r}. Replace it with the actual value (see the .env.example "
+                f"file for the format)."
+            )
+        return self
 
     def approval_policy(self) -> dict[str, Any]:
         import json
