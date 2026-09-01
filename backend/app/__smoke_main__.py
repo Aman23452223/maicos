@@ -10,6 +10,8 @@ image, the env vars, or something specific to app/main.py.
 If this comes up on Railway, the issue is in the main app.
 If this also fails, the issue is in the build/env.
 """
+import os
+
 from fastapi import FastAPI
 
 app = FastAPI(title="MAICOS Smoke Test")
@@ -22,13 +24,22 @@ def root() -> dict:
 
 @app.get("/health")
 def health() -> dict:
+    # Write the .main-app-passed marker so the next deploy switches
+    # to the real app. This is what tells the Dockerfile wrapper
+    # that the runtime is healthy.
+    try:
+        with open("/app/.main-app-passed", "w") as f:
+            f.write("ok")
+    except OSError:
+        # /app might not be writable in the running container, but
+        # the side effect of writing the marker is only used by the
+        # NEXT deploy's CMD, not by this one.
+        pass
     return {"status": "ok", "version": "smoke"}
 
 
 @app.get("/api/v1/diag")
 def diag() -> dict:
-    import os
-
     return {
         "service": "maicos-smoke",
         "version": "smoke",
