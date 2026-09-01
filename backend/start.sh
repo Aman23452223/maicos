@@ -3,6 +3,12 @@
 # This will help isolate whether the 502 is a build issue or runtime issue.
 echo "[start] container alive at $(date -u +%FT%TZ)"
 
+# Diagnostic mode: if DIAGNOSE=1, just run the diagnostic and exit
+# without starting uvicorn. Use this to gather deployment info.
+if [ -n "$DIAGNOSE" ]; then
+    exec /app/diagnose.sh
+fi
+
 # Check environment
 echo "[start] PORT=$PORT"
 echo "[start] DATABASE_URL is set: $([ -n "$DATABASE_URL" ] && echo yes || echo no)"
