@@ -125,7 +125,7 @@ def main() -> int:
         try:
             urllib.request.urlopen(f"{BASE}/health", timeout=1)
             break
-        except Exception:
+        except Exception:  # noqa: BLE001
             time.sleep(0.25)
     else:
         print("server failed to start:", server_error)
@@ -235,7 +235,7 @@ def main() -> int:
                     f"status={status}",
                 )
 
-                status, queue_stats = _req(
+                status, _queue_stats = _req(
                     "GET", "/api/v1/queue/stats", token=token
                 )
                 check(
@@ -244,7 +244,7 @@ def main() -> int:
                     f"status={status} (403 = admin role missing, ok)",
                 )
 
-                status, audit = _req("GET", "/api/v1/audit", token=token)
+                status, _audit = _req("GET", "/api/v1/audit", token=token)
                 check(
                     "GET /api/v1/audit",
                     status in (200, 403),
