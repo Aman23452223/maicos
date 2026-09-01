@@ -31,8 +31,8 @@ if [ -n "$SMOKE_TEST" ] || [ ! -f /app/.main-app-passed ]; then
         echo "[start] no .main-app-passed marker - first deploy, using smoke"
     fi
     # Create the marker after smoke is verified (touch from inside uvicorn startup)
-    exec uvicorn app.__smoke_main__:app --host 0.0.0.0 --port "${PORT:-8000}" --log-level info --proxy-headers --forwarded-allow-ips='*'
+    exec uvicorn app.__smoke_main__:app --host 0.0.0.0 --port "${PORT}" --log-level info --proxy-headers --forwarded-allow-ips='*'
 else
     echo "[start] .main-app-passed exists, running main app"
-    exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --log-level info --proxy-headers --forwarded-allow-ips='*' 2>&1
+    exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" --log-level info --proxy-headers --forwarded-allow-ips='*' 2>&1
 fi
