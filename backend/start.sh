@@ -14,7 +14,6 @@ echo "[start] PORT=$PORT"
 echo "[start] DATABASE_URL is set: $([ -n "$DATABASE_URL" ] && echo yes || echo no)"
 if [ -n "$DATABASE_URL" ]; then
     echo "[start] DATABASE_URL length: ${#DATABASE_URL}"
-    echo "[start] DATABASE_URL first 60 chars: ${DATABASE_URL:0:60}"
 fi
 
 # Print pre-flight diagnostics
