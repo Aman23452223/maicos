@@ -26,6 +26,7 @@ from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import SessionLocal
+from app.models.orm import Company, User
 from app.queue.worker import start_worker, stop_worker
 
 log = get_logger("app")
@@ -218,6 +219,18 @@ def create_app() -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             info["db"] = {"ok": False, "error": str(exc)}
         return info
+
+    @app.get("/api/v1/debug_auth")
+    def debug_auth() -> dict:
+        db = SessionLocal()
+        try:
+            users_count = db.query(User).count()
+            companies_count = db.query(Company).count()
+            return {"ok": True, "users_count": users_count, "companies_count": companies_count}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc), "type": type(exc).__name__}
+        finally:
+            db.close()
 
     return app
 
