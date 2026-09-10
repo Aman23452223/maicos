@@ -16,7 +16,16 @@ export default function AgentsPage() {
   return (
     <div className="card p-4">
       <div className="font-semibold mb-2">Agents</div>
-      {error && <div className="text-bad text-sm">{String(error)}</div>}
+      {error && (
+        String(error).includes("401") || String(error).includes("bearer") ? (
+          <div className="p-3 bg-panel border border-line rounded-lg text-sm mb-3 flex items-center justify-between">
+            <span className="text-muted">Sign in to manage and configure agents for your workspace.</span>
+            <a href="/login" className="px-3 py-1 bg-accent text-bg font-medium rounded text-xs">Sign In</a>
+          </div>
+        ) : (
+          <div className="text-bad text-sm mb-2">{String(error)}</div>
+        )
+      )}
       <table className="w-full text-sm">
         <thead className="text-muted text-left">
           <tr>
