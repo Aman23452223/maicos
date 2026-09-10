@@ -34,7 +34,7 @@ if [ -z "$DATABASE_URL" ]; then
     echo "       -> Type: Raw Variable (not Reference)"
     echo "       -> Paste the connection string from Supabase dashboard"
 else
-    echo "  STATUS: SET (length: ${#DATABASE_URL})"
+    echo "  STATUS: SET (length: $(printf '%s' "$DATABASE_URL" | wc -c | tr -d ' '))"
     url="$DATABASE_URL"
 
     # Reject if there are unresolved placeholders

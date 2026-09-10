@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
@@ -20,11 +21,15 @@ _settings = get_settings()
 # return 502). `pool_pre_ping=True` keeps stale connections out of the
 # pool after Postgres restarts.
 # `future=True` enables SQLAlchemy 2.0-style usage.
+connect_args: dict[str, Any] = {}
+if "postgresql" in _settings.database_url:
+    connect_args["connect_timeout"] = 5
+
 engine: Engine = create_engine(
     _settings.database_url,
     pool_pre_ping=True,
     future=True,
-    connect_args={"connect_timeout": 5},
+    connect_args=connect_args,
 )
 SessionLocal: sessionmaker[Session] = sessionmaker(
     bind=engine, autoflush=False, autocommit=False, future=True
