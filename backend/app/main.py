@@ -119,6 +119,16 @@ async def _lifespan_init(s, log, redact) -> None:
     except Exception as exc:  # noqa: BLE001
         log.error("db.connect_unexpected", error=str(exc))
 
+    # Auto-create tables on startup if DB is reachable
+    if db_ok:
+        try:
+            from app.db.session import engine, Base
+            import app.models.orm  # noqa: F401
+            Base.metadata.create_all(bind=engine)
+            log.info("db.create_all_ok")
+        except Exception as exc:  # noqa: BLE001
+            log.error("db.create_all_failed", error=str(exc))
+
     # Auto-migrate on startup, but only if the DB is reachable.
     if db_ok and s.worker_enabled:
         log.info("migrate.start")
@@ -231,6 +241,27 @@ def create_app() -> FastAPI:
             return {"ok": False, "error": str(exc), "type": type(exc).__name__}
         finally:
             db.close()
+
+    @app.get("/api/v1/setup_db")
+    def setup_db() -> dict:
+        from app.db.session import Base, engine
+        import app.models.orm  # noqa: F401
+        try:
+            Base.metadata.create_all(bind=engine)
+            db = SessionLocal()
+            try:
+                users_count = db.query(User).count()
+                companies_count = db.query(Company).count()
+                return {
+                    "ok": True,
+                    "tables": list(Base.metadata.tables.keys()),
+                    "users_count": users_count,
+                    "companies_count": companies_count,
+                }
+            finally:
+                db.close()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc), "type": type(exc).__name__}
 
     return app
 
