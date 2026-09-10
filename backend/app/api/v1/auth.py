@@ -30,6 +30,11 @@ from app.schemas import (
 router = APIRouter(tags=["auth"])
 
 
+@router.get("/auth/version")
+def auth_version():
+    return {"version": "2026-09-11-004", "has_register": True}
+
+
 @router.post("/workspaces", response_model=WorkspaceOut)
 def create_workspace(payload: WorkspaceCreate, db: Session = Depends(get_db)) -> WorkspaceOut:
     company = Company(name=payload.name)
