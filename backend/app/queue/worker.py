@@ -127,9 +127,9 @@ def _drain_once(timeout: float = 0.0) -> int:
             if job is None:
                 return processed
             db.commit()  # commit the claim
-        except Exception:
+        except Exception as exc:
             db.rollback()
-            log.exception("worker.claim_failed")
+            log.warning("worker.claim_failed", error=str(exc))
             return processed
         finally:
             db.close()
