@@ -41,6 +41,13 @@ class LoginIn(BaseModel):
     password: str
 
 
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str | None = None
+    company_name: str | None = None
+
+
 class CommandIn(BaseModel):
     objective: str = Field(min_length=1)
     conversation_id: str | None = None

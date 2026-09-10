@@ -53,6 +53,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  register: (email: string, password: string, name?: string, company_name?: string) =>
+    request<{ access_token: string }>("/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, name, company_name }),
+    }),
   me: () => request<{ id: string; email: string; name: string; roles: string[] }>("/v1/auth/me"),
   submitCommand: (objective: string, conversation_id?: string) =>
     request<Workflow>("/v1/commands", {

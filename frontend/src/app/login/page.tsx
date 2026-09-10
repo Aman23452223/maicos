@@ -1,147 +1,254 @@
 "use client";
 
 import { useState } from "react";
-import { useSupabaseAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
-  const auth = useSupabaseAuth();
-  const [mode, setMode] = useState<"password" | "magic">("password");
+  const router = useRouter();
+  const { user, status, signInWithPassword, signUp, signInWithOtp, signOut } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  if (auth.status === "disabled") {
+  if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card max-w-md w-full">
-          <h1 className="text-lg font-semibold mb-2">Sign in</h1>
-          <p className="text-sm text-muted">
-            Supabase auth is not configured. Set
-            <code className="mx-1">NEXT_PUBLIC_SUPABASE_URL</code>
-            and
-            <code className="mx-1">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
-            in <code>frontend/.env.local</code>, then restart the dev server.
+      <div className="min-h-screen flex items-center justify-center text-xs text-muted font-mono">
+        Verifying cryptographic session…
+      </div>
+    );
+  }
+
+  if (user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-[#08090b]">
+        <div className="w-full max-w-md p-8 rounded-2xl bg-[#0e1217] border border-white/[0.08] shadow-2xl text-center space-y-4">
+          <div className="w-14 h-14 mx-auto rounded-full bg-ok/10 border border-ok/20 flex items-center justify-center text-2xl text-ok">
+            ✓
+          </div>
+          <h1 className="text-xl font-bold text-ink">Authenticated Session Active</h1>
+          <p className="text-xs text-muted">
+            Signed in as <strong className="text-ink font-mono">{user.email}</strong>
           </p>
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              onClick={() => router.push("/command")}
+              className="w-full py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-bg font-semibold text-xs transition-all shadow-[0_0_15px_rgba(91,141,239,0.3)]"
+            >
+              Open AI Command Center
+            </button>
+            <button
+              onClick={signOut}
+              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-muted hover:text-ink border border-white/10 text-xs font-medium transition-all"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (auth.status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted">
-        Loading session…
-      </div>
-    );
-  }
-
-  async function submit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     setMsg(null);
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setErr("Please enter a valid email address");
+      setBusy(false);
+      return;
+    }
+
     try {
-      if (mode === "password") {
-        await auth.signInWithPassword(email, password);
-        setMsg("Signed in.");
-      } else {
-        await auth.signInWithOtp(email);
-        setMsg("Check your inbox for the magic link.");
+      if (mode === "signin") {
+        await signInWithPassword(cleanEmail, password);
+        router.push("/command");
+      } else if (mode === "signup") {
+        await signUp(cleanEmail, password, name.trim() || undefined);
+        router.push("/command");
+      } else if (mode === "magic") {
+        await signInWithOtp(cleanEmail);
+        setMsg("Magic link sent! Check your inbox.");
       }
     } catch (e) {
-      setErr((e as Error).message);
+      setErr((e as Error).message || "Authentication failed");
     } finally {
       setBusy(false);
     }
-  }
-
-  async function signup() {
-    setBusy(true);
-    setErr(null);
-    setMsg(null);
-    try {
-      await auth.signUp(email, password);
-      setMsg("Account created. Check your email to confirm.");
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (auth.status === "authed") {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="card max-w-md w-full">
-          <h1 className="text-lg font-semibold mb-2">Signed in</h1>
-          <p className="text-sm text-muted mb-4">{auth.user.email}</p>
-          <button className="btn-ghost" onClick={() => auth.signOut()}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="card max-w-md w-full">
-        <h1 className="text-lg font-semibold mb-4">Sign in</h1>
-        <div className="flex gap-2 mb-4 text-sm">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#08090b] relative overflow-hidden">
+      {/* Background ambient glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Brand */}
+      <Link href="/" className="mb-8 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent via-blue-600 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-[0_0_20px_rgba(91,141,239,0.35)]">
+          M
+        </div>
+        <div className="text-xl font-bold tracking-wider text-ink flex items-center gap-1.5">
+          <span>MAICOS</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent/20 text-accent font-mono">
+            OS
+          </span>
+        </div>
+      </Link>
+
+      <div className="w-full max-w-md p-8 rounded-2xl bg-[#0e1217]/90 backdrop-blur-xl border border-white/[0.08] shadow-2xl relative z-10">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-ink tracking-tight">
+            {mode === "signin"
+              ? "Sign In to Workspace"
+              : mode === "signup"
+              ? "Create your AI Workspace"
+              : "Sign In with Magic Link"}
+          </h1>
+          <p className="text-xs text-muted mt-1">
+            Access your autonomous workforce, workflows, and operations.
+          </p>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex rounded-lg bg-black/40 p-1 border border-white/5 mb-5 text-xs font-medium">
           <button
-            className={mode === "password" ? "btn" : "btn-ghost"}
-            onClick={() => setMode("password")}
             type="button"
+            onClick={() => {
+              setMode("signin");
+              setErr(null);
+            }}
+            className={`flex-1 py-1.5 rounded-md transition-all ${
+              mode === "signin"
+                ? "bg-panel text-ink shadow-sm font-semibold border border-white/10"
+                : "text-muted hover:text-ink"
+            }`}
           >
-            Password
+            Sign In
           </button>
           <button
-            className={mode === "magic" ? "btn" : "btn-ghost"}
-            onClick={() => setMode("magic")}
             type="button"
+            onClick={() => {
+              setMode("signup");
+              setErr(null);
+            }}
+            className={`flex-1 py-1.5 rounded-md transition-all ${
+              mode === "signup"
+                ? "bg-panel text-ink shadow-sm font-semibold border border-white/10"
+                : "text-muted hover:text-ink"
+            }`}
           >
-            Magic link
+            Create Account
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("magic");
+              setErr(null);
+            }}
+            className={`flex-1 py-1.5 rounded-md transition-all ${
+              mode === "magic"
+                ? "bg-panel text-ink shadow-sm font-semibold border border-white/10"
+                : "text-muted hover:text-ink"
+            }`}
+          >
+            Magic Link
           </button>
         </div>
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <input
-            className="input"
-            placeholder="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          {mode === "password" && (
-            <input
-              className="input"
-              placeholder="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          )}
-          <div className="flex gap-2">
-            <button className="btn" disabled={busy} type="submit">
-              {busy ? "Working…" : mode === "magic" ? "Send link" : "Sign in"}
-            </button>
-            {mode === "password" && (
-              <button
-                className="btn-ghost"
-                disabled={busy}
-                type="button"
-                onClick={signup}
-              >
-                Create account
-              </button>
-            )}
+
+        {/* Error notification banner */}
+        {err && (
+          <div className="mb-4 p-3 rounded-lg bg-bad/10 border border-bad/30 text-bad text-xs">
+            {err}
           </div>
-          {msg && <p className="text-sm text-ok">{msg}</p>}
-          {err && <p className="text-sm text-bad">{err}</p>}
+        )}
+
+        {/* Success message banner */}
+        {msg && (
+          <div className="mb-4 p-3 rounded-lg bg-ok/10 border border-ok/30 text-ok text-xs">
+            ✓ {msg}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {mode === "signup" && (
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Full Name
+              </label>
+              <input
+                type="text"
+                placeholder="Aman Chawhan"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent"
+            />
+          </div>
+
+          {mode !== "magic" && (
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full mt-2 py-2.5 rounded-xl bg-accent hover:bg-accent/90 text-bg font-semibold text-xs transition-all shadow-[0_0_15px_rgba(91,141,239,0.3)] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {busy ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-bg border-t-transparent rounded-full animate-spin" />
+                <span>Authenticating…</span>
+              </>
+            ) : mode === "signin" ? (
+              "Sign In to Workspace"
+            ) : mode === "signup" ? (
+              "Create Workspace Account"
+            ) : (
+              "Send Magic Link"
+            )}
+          </button>
         </form>
+
+        <div className="mt-6 pt-4 border-t border-white/5 text-center text-xs text-muted">
+          <Link href="/" className="hover:text-ink transition-colors">
+            ← Back to Homepage
+          </Link>
+        </div>
       </div>
     </div>
   );

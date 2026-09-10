@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.models.orm import Company, User
 from app.schemas import (
     LoginIn,
+    RegisterIn,
     TokenOut,
     UserCreate,
     UserOut,
@@ -71,6 +72,34 @@ def login(payload: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="invalid credentials")
+    token = create_access_token(
+        sub=user.id, workspace_id=user.company_id, roles=user.roles or []
+    )
+    return TokenOut(access_token=token)
+
+
+@router.post("/auth/register", response_model=TokenOut)
+def register(payload: RegisterIn, db: Session = Depends(get_db)) -> TokenOut:
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="email already registered")
+    company_name = (
+        payload.company_name
+        or (payload.email.split("@")[1] if "@" in payload.email else "Workspace")
+    )
+    company = Company(name=company_name)
+    db.add(company)
+    db.flush()
+    user = User(
+        company_id=company.id,
+        email=payload.email,
+        name=payload.name or payload.email.split("@")[0],
+        password_hash=hash_password(payload.password),
+        roles=["admin", "owner"],
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     token = create_access_token(
         sub=user.id, workspace_id=user.company_id, roles=user.roles or []
     )

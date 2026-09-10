@@ -484,6 +484,21 @@ body:has(.maicos-landing) > div { display: block !important; }
   .lg\:col-span-3 { grid-column: span 3 / span 3; }
 }
 
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Hero route: full-viewport takeover.                                 */
 /* Hides the dashboard chrome (Sidebar + Topbar) so the hero is the   */

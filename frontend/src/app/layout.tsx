@@ -1,7 +1,6 @@
 import "./globals.css";
-import { Sidebar } from "@/components/Sidebar";
-import { Topbar } from "@/components/Topbar";
 import { SupabaseAuthProvider } from "@/contexts/AuthContext";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata = {
   title: "MAICOS — Multi-Agent AI Company OS",
@@ -10,16 +9,10 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className="dark">
+      <body className="bg-[#08090b] text-[#e8edf3] antialiased selection:bg-blue-500/30">
         <SupabaseAuthProvider>
-          <div className="min-h-screen flex">
-            <Sidebar />
-            <main className="flex-1 flex flex-col">
-              <Topbar />
-              <div className="p-6 flex-1">{children}</div>
-            </main>
-          </div>
+          <AppShell>{children}</AppShell>
         </SupabaseAuthProvider>
       </body>
     </html>
