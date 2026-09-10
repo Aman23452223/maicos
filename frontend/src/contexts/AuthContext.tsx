@@ -231,11 +231,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       // 1. Try Supabase signup if configured
       if (client) {
         try {
-          await client.auth.signUp({
+          const { data } = await client.auth.signUp({
             email: cleanEmail,
             password,
             options: { data: { name: name || cleanEmail.split("@")[0] } },
           });
+          if (data?.session) {
+            setSession(data.session);
+            setSupabaseUser(data.user);
+            setTokenState(data.session.access_token);
+            await refreshSession();
+            setIsAuthModalOpen(false);
+            return;
+          }
         } catch {
           // non-fatal, try native register
         }
@@ -253,7 +261,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (e) {
         const msg = (e as Error).message;
-        if (msg.includes("already registered")) {
+        if (msg.includes("already registered") || msg.includes("sign in")) {
           await signInWithPassword(cleanEmail, password);
           return;
         }

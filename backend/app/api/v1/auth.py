@@ -1,6 +1,8 @@
 """Workspace and authentication routes (FR-01, FR-02)."""
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -80,30 +82,63 @@ def login(payload: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
 
 @router.post("/auth/register", response_model=TokenOut)
 def register(payload: RegisterIn, db: Session = Depends(get_db)) -> TokenOut:
-    existing = db.query(User).filter(User.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="email already registered")
-    company_name = (
-        payload.company_name
-        or (payload.email.split("@")[1] if "@" in payload.email else "Workspace")
-    )
-    company = Company(name=company_name)
-    db.add(company)
-    db.flush()
-    user = User(
-        company_id=company.id,
-        email=payload.email,
-        name=payload.name or payload.email.split("@")[0],
-        password_hash=hash_password(payload.password),
-        roles=["admin", "owner"],
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    token = create_access_token(
-        sub=user.id, workspace_id=user.company_id, roles=user.roles or []
-    )
-    return TokenOut(access_token=token)
+    clean_email = str(payload.email).lower().strip()
+    user = db.query(User).filter(User.email == clean_email).first()
+    if user:
+        # If user already exists (e.g. provisioned previously without a password)
+        if not user.password_hash:
+            user.password_hash = hash_password(payload.password)
+            if payload.name and not user.name:
+                user.name = payload.name
+            db.commit()
+            db.refresh(user)
+        elif not verify_password(payload.password, user.password_hash):
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered. Please sign in with your password.",
+            )
+        token = create_access_token(
+            sub=user.id, workspace_id=user.company_id, roles=user.roles or []
+        )
+        return TokenOut(access_token=token)
+
+    try:
+        company_id = str(uuid.uuid4())
+        company_name = (
+            payload.company_name
+            or (clean_email.split("@")[1] if "@" in clean_email else "Workspace")
+        )
+        company = Company(
+            id=company_id,
+            name=company_name,
+            autonomy_level=2,
+        )
+        db.add(company)
+        db.flush()
+
+        user_id = str(uuid.uuid4())
+        user = User(
+            id=user_id,
+            company_id=company_id,
+            email=clean_email,
+            name=payload.name or clean_email.split("@")[0],
+            password_hash=hash_password(payload.password),
+            roles=["admin", "owner"],
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        token = create_access_token(
+            sub=user.id, workspace_id=user.company_id, roles=user.roles or []
+        )
+        return TokenOut(access_token=token)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create workspace: {e}"
+        )
 
 
 @router.get("/auth/me", response_model=UserOut)
