@@ -22,11 +22,13 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(password: str, password_hash: str) -> bool:
+def verify_password(password: str, password_hash: str | None) -> bool:
+    if not password or not password_hash:
+        return False
     raw = password.encode("utf-8")[:72]
     try:
         return bcrypt.checkpw(raw, password_hash.encode("utf-8"))
-    except ValueError:
+    except (ValueError, TypeError, Exception):
         return False
 
 
