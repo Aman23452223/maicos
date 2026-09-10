@@ -173,6 +173,17 @@ def create_app() -> FastAPI:
     )
     app.include_router(api_router)
 
+    @app.get("/")
+    def root() -> dict:
+        """Root status endpoint."""
+        return {
+            "name": "Multi-Agent AI Company OS API",
+            "version": "0.1.0",
+            "status": "ok",
+            "docs": "/docs",
+            "health": "/health",
+        }
+
     @app.get("/health")
     def health() -> dict:
         """Liveness — process is up, regardless of DB state."""
