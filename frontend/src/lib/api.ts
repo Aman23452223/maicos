@@ -86,6 +86,46 @@ export const api = {
   listAudit: () => request<AuditEvent[]>("/v1/audit"),
   listDocuments: () => request<DocumentInfo[]>("/v1/documents"),
   listConversations: () => request<ConversationSummary[]>("/v1/conversations"),
+  analyzeWebsite: (url: string) =>
+    request<{ ok: boolean; profile: Record<string, unknown>; document_id: string; pages_crawled: number }>(
+      "/v1/intel/analyze-website",
+      { method: "POST", body: JSON.stringify({ url, use_llm: false }) },
+    ),
+  getBusinessProfile: () => request<BusinessProfile>("/v1/business/profile"),
+  updateBusinessProfile: (payload: Record<string, unknown>) =>
+    request<{ ok: boolean }>("/v1/business/profile", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  discoverLeads: (query: string, provider = "search", limit = 20) =>
+    request<{ status: string; message: string; prospects: Record<string, unknown>[] }>(
+      "/v1/leads/discover",
+      { method: "POST", body: JSON.stringify({ query, provider, limit }) },
+    ),
+  importLeads: (prospects: Record<string, unknown>[], auto_qualify = true) =>
+    request<{ created: number; deduped: number; ids: string[] }>("/v1/leads/import", {
+      method: "POST",
+      body: JSON.stringify({ prospects, auto_qualify }),
+    }),
+  listLeads: (status?: string) =>
+    request<Lead[]>(`/v1/leads${status ? `?status=${status}` : ""}`),
+  qualifyLead: (id: string) =>
+    request<{ score: number; status: string }>(`/v1/leads/${id}/qualify`, {
+      method: "POST",
+    }),
+  enrichLead: (id: string) =>
+    request<{ ok: boolean }>(`/v1/leads/${id}/enrich`, { method: "POST" }),
+  scheduleFollowups: (lead_id: string) =>
+    request<{ ok: boolean; created: number }>(`/v1/followups/schedule`, {
+      method: "POST",
+      body: JSON.stringify({ lead_id }),
+    }),
+  runDueFollowups: () =>
+    request<{ sent: number; skipped: number }>(`/v1/followups/run-due`, {
+      method: "POST",
+    }),
+  funnel: () => request<Record<string, unknown>>("/v1/analytics/funnel"),
+  weeklyReport: () => request<Record<string, unknown>>("/v1/reports/weekly"),
   scheduleWorkflow: (objective: string, runAt: string) =>
     request<{ job_id: string; run_at: string }>(
       `/v1/workflows/schedule?objective=${encodeURIComponent(objective)}&run_at=${encodeURIComponent(runAt)}`,
@@ -127,4 +167,7 @@ import type {
   AuditEvent,
   DocumentInfo,
   ConversationSummary,
+  Lead,
+  BusinessProfile,
 } from "./types";
+export type { Lead, BusinessProfile };

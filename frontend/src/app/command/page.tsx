@@ -7,9 +7,10 @@ import type { Workflow, WorkflowTask } from "@/lib/types";
 
 const QUICK_PROMPTS = [
   "Onboard the new client ABC with full billing setup and welcome checklist.",
-  "Run a complete financial audit on Q3 Stripe revenues and flag any billing discrepancies.",
-  "Scan knowledge vault documents and summarize the updated customer refund policy.",
-  "Sync CRM records with outreach campaign results and draft weekly executive digest.",
+  "Find potential restaurant clients in Nagpur, qualify them and add to CRM.",
+  "Analyze website https://example.com and tell me services and target customers.",
+  "Follow up with all qualified leads that have not responded in 5 days.",
+  "Generate weekly business report with pipeline and stuck leads.",
 ];
 
 export default function CommandPage() {

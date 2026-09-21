@@ -15,6 +15,9 @@ const ROUTE_NAMES: Record<string, { title: string; subtitle: string; icon: strin
   "/knowledge": { title: "Knowledge Vault", subtitle: "Vector & RAG Indexing", icon: "📚" },
   "/audit": { title: "Audit Trail", subtitle: "Immutable Action Log & Compliance", icon: "📜" },
   "/settings": { title: "Settings", subtitle: "LLM Providers & Workspace Config", icon: "⚙️" },
+  "/leads": { title: "Leads & CRM", subtitle: "Discovery, Qualification & Pipeline", icon: "🎯" },
+  "/intel": { title: "Business Intel", subtitle: "Website Analysis & Business Profile", icon: "🌐" },
+  "/analytics": { title: "Analytics", subtitle: "Funnel, Pipeline & Reports", icon: "📈" },
 };
 
 export function AppHeader() {
@@ -30,14 +33,19 @@ export function AppHeader() {
     icon: "🧭",
   };
 
-  // Check live backend health
+  // Check live backend health (backend exposes /api/v1/diag; /api/health is 404)
   useEffect(() => {
     let mounted = true;
     async function checkHealth() {
       try {
-        const res = await fetch("/api/health", { cache: "no-store" });
+        const res = await fetch("/api/v1/diag", { cache: "no-store" });
         if (mounted) {
-          setSystemPing(res.ok ? "ok" : "down");
+          if (!res.ok) {
+            setSystemPing("down");
+            return;
+          }
+          const body = await res.json().catch(() => null);
+          setSystemPing(body?.db?.ok === false ? "ok" : res.ok ? "ok" : "down");
         }
       } catch {
         if (mounted) setSystemPing("down");

@@ -83,3 +83,26 @@ export interface AuditEvent {
   details: Record<string, unknown>;
   created_at: string;
 }
+
+export interface Lead {
+  id: string;
+  company_name: string;
+  email: string | null;
+  location: string;
+  industry: string;
+  status: string;
+  score: number;
+  source: string;
+}
+
+export interface BusinessProfile {
+  business_name: string;
+  industry: string;
+  description: string;
+  target_customer: string;
+  geography: string;
+  icp: Record<string, unknown>;
+  scoring_rules: Record<string, unknown>;
+  website_url: string;
+  profile: Record<string, unknown>;
+}

@@ -31,6 +31,14 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "GROWTH",
+    items: [
+      { href: "/leads", label: "Leads & CRM", icon: "🎯" },
+      { href: "/intel", label: "Business Intel", icon: "🌐" },
+      { href: "/analytics", label: "Analytics", icon: "📈" },
+    ],
+  },
+  {
     title: "GOVERNANCE",
     items: [
       { href: "/audit", label: "Audit Trail", icon: "📜" },
