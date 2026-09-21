@@ -255,7 +255,7 @@ def _plan_website_analysis(objective: str) -> dict[str, Any]:
                 "agent": "analytics",
                 "title": "Summarize business profile",
                 "description": "Report extracted services/target customers.",
-                "input": {"action": "report"},
+                "input": {"action": "summarize_profile"},
                 "depends_on": ["analyze_site"],
             },
         ],

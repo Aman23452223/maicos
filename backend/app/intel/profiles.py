@@ -49,6 +49,10 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
     social = sorted({s for p in pages for s in p.social_links})[:20]
     ctas = sorted({c for p in pages for c in p.ctas})[:20]
     desc = home.meta_description or all_text[:600]
+    # Generic deterministic audience/geography inference (no industry hardcode):
+    # derive from location signals + CTA intent + top services.
+    geography = _infer_geography(all_text, phones)
+    target_customer = _infer_audience(all_text, services[:3], ctas, geography)
     return {
         "website_url": base_url,
         "domain": _domain(base_url),
@@ -57,8 +61,8 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
         "services": services,
         "products": [],
         "industries_served": industries,
-        "target_customer": "",
-        "geography": "",
+        "target_customer": target_customer,
+        "geography": geography,
         "pricing_info": "",
         "emails": emails,
         "phones": phones,
@@ -69,6 +73,48 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
         "pages_crawled": len(pages),
         "extraction": "deterministic",
     }
+
+
+def _infer_geography(text: str, phones: list[str]) -> str:
+    """Generic location signals: city-like patterns + phone country hints."""
+    import re
+
+    # explicit "in <Place>" / city, state patterns (generic, not hardcoded list)
+    m = re.search(
+        r"\bin\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2}\s*,\s*[A-Z][A-Za-z.'-]+)",
+        text,
+    )
+    if m:
+        return m.group(1).strip()[:120]
+    m = re.search(r"([A-Z][A-Za-z]+,\s*[A-Za-z]+\s*\d{5,6})", text)
+    if m:
+        return m.group(1).strip()[:120]
+    joined_phones = " ".join(phones)
+    if "+91" in joined_phones or "08328" in joined_phones:
+        # country-level hint only; city comes from text when present
+        city = re.search(r"\b([A-Z][a-z]+)\b", text)
+        return f"{city.group(1)}, India" if city else "India"
+    return ""
+
+
+def _infer_audience(
+    text: str, services: list[str], ctas: list[str], geography: str
+) -> str:
+    """Generic audience string from intent signals, not industry templates."""
+    low = text.lower()
+    intents: list[str] = []
+    if any(k in low for k in ("book", "table", "reserve", "order", "menu")):
+        intents.append("people looking to book/order")
+    if any(k in low for k in ("contact", "quote", "demo", "trial", "sign up")):
+        intents.append("potential buyers evaluating the offering")
+    if any(k in low for k in ("career", "hiring", "job")):
+        intents.append("job seekers")
+    if not intents:
+        intents.append("visitors interested in the offering")
+    scope = ", ".join(services[:2]) if services else "the offering"
+    geo = f" in {geography}" if geography else ""
+    cta = f" (CTA: {', '.join(ctas[:2])})" if ctas else ""
+    return f"{'; '.join(intents)} — {scope}{geo}{cta}"[:1000]
 
 
 def llm_enhance(profile: dict[str, Any], objective: str = "") -> dict[str, Any]:

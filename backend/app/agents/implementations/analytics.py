@@ -20,6 +20,27 @@ class AnalyticsAgent:
 
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action", "summarize")
+        if action == "summarize_profile":
+            # Generic: summarize upstream analyze_site profile (no industry logic).
+            upstream = ctx.shared.get("analyze_site") or {}
+            profile = upstream.get("profile") or {}
+            if not profile:
+                return AgentResult(error="no upstream website profile to summarize")
+            services = profile.get("services") or []
+            return AgentResult(output={
+                "website_url": upstream.get("website_url", ""),
+                "company_name": profile.get("company_name", ""),
+                "services": services[:10],
+                "target_customers": profile.get("target_customer", ""),
+                "geography": profile.get("geography", ""),
+                "ctas": (profile.get("ctas") or [])[:10],
+                "pages_crawled": upstream.get("pages_crawled", 0),
+                "summary": (
+                    f"{profile.get('company_name', 'Business')} offers "
+                    f"{'; '.join(services[:3]) or 'listed services'} "
+                    f"for {profile.get('target_customer', 'its audience')}"
+                )[:1000],
+            })
         if action in ("funnel", "pipeline", "operations", "report", "weekly_report"):
             try:
                 from app.analytics.metrics import (

@@ -34,7 +34,7 @@ class KnowledgeAgent:
             try:
                 out = analyze_website(
                     ctx.db, company_id=ctx.principal.workspace_id, url=url,
-                    actor=ctx.principal.user_id, use_llm=False,
+                    actor=ctx.principal.user_id, use_llm=True,
                 )
             except ValueError as exc:
                 return AgentResult(error=str(exc))
