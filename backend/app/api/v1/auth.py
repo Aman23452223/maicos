@@ -36,14 +36,20 @@ def auth_version():
 
 
 @router.post("/workspaces", response_model=WorkspaceOut)
-def create_workspace(payload: WorkspaceCreate, db: Session = Depends(get_db)) -> WorkspaceOut:
-    company = Company(name=payload.name)
+def create_workspace(payload: WorkspaceCreate, db: Session = Depends(get_db),
+                     p: Principal = Depends(get_current_principal)) -> WorkspaceOut:
+    from app.models.orm import WorkspaceMembership
+
+    # Any authenticated member can create; creator becomes OWNER of new workspace.
+    company = Company(name=payload.name, status="active")
     db.add(company)
     db.flush()
+    db.add(WorkspaceMembership(user_id=p.user_id, company_id=company.id,
+                               role="owner", status="active"))
     record(
         db,
         company_id=company.id,
-        actor="system",
+        actor=p.user_id,
         action="workspace.created",
         target_type="workspace",
         target_id=company.id,
@@ -54,13 +60,54 @@ def create_workspace(payload: WorkspaceCreate, db: Session = Depends(get_db)) ->
     return WorkspaceOut(id=company.id, name=company.name, autonomy_level=company.autonomy_level)
 
 
+@router.get("/workspaces")
+def list_workspaces(p: Principal = Depends(get_current_principal),
+                    db: Session = Depends(get_db)):
+    from app.models.orm import Company, WorkspaceMembership
+    rows = db.query(WorkspaceMembership).filter(
+        WorkspaceMembership.user_id == p.user_id,
+        WorkspaceMembership.status == "active").all()
+    out = []
+    for m in rows:
+        co = db.get(Company, m.company_id)
+        if co:
+            out.append({"id": co.id, "name": co.name, "role": m.role,
+                        "status": co.status, "current": co.id == p.workspace_id})
+    # Backward compat: legacy primary workspace without membership row
+    if not out:
+        co = db.get(Company, p.workspace_id)
+        if co:
+            out.append({"id": co.id, "name": co.name, "role": "owner",
+                        "status": co.status, "current": True})
+    return out
+
+
+@router.post("/auth/switch")
+def switch_workspace(payload: dict, p: Principal = Depends(get_current_principal),
+                     db: Session = Depends(get_db)):
+    from app.schemas import TokenOut
+    from app.tenancy.membership import membership_role as _role_for
+
+    ws = str(payload.get("workspace_id", ""))
+    role = _role_for(db, user_id=p.user_id, company_id=ws)
+    if not role:
+        raise HTTPException(status_code=403, detail="not a workspace member")
+    token = create_access_token(sub=p.user_id, workspace_id=ws, roles=[role])
+    return TokenOut(access_token=token)
+
+
 @router.post("/workspaces/{workspace_id}/users", response_model=UserOut)
 def create_user(
     workspace_id: str,
     payload: UserCreate,
     db: Session = Depends(get_db),
-    _: Principal = Depends(require_role("admin", "owner")),
+    p: Principal = Depends(require_role("admin", "owner")),
 ) -> UserOut:
+    from app.models.orm import WorkspaceMembership
+
+    # Strict tenant check: can only manage users in own workspace.
+    if workspace_id != p.workspace_id:
+        raise HTTPException(status_code=403, detail="cross-workspace user creation forbidden")
     user = User(
         company_id=workspace_id,
         email=payload.email,
@@ -69,6 +116,12 @@ def create_user(
         roles=payload.roles,
     )
     db.add(user)
+    db.flush()
+    role = (payload.roles or ["member"])[0] if payload.roles else "member"
+    if role not in ("owner", "admin", "member"):
+        role = "member"
+    db.add(WorkspaceMembership(user_id=user.id, company_id=workspace_id,
+                               role=role, status="active"))
     db.commit()
     db.refresh(user)
     return UserOut(id=user.id, email=user.email, name=user.name, roles=user.roles)
@@ -139,6 +192,11 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)) -> TokenOut:
             is_active=True,
         )
         db.add(user)
+        db.flush()
+        from app.models.orm import WorkspaceMembership
+
+        db.add(WorkspaceMembership(user_id=user_id, company_id=company_id,
+                                  role="owner", status="active"))
         db.commit()
         db.refresh(user)
 

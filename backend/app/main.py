@@ -62,6 +62,11 @@ async def lifespan(app: FastAPI):
         worker=s.worker_enabled,
         database_url=_redact(s.database_url),
     )
+    if s.app_env == "production" and ("*" in s.cors_origins):
+        log.error(
+            "security.cors_wildcard",
+            error="CORS_ORIGINS contains '*' in production; restrict to workspace domains",
+        )
     # Yield to uvicorn FIRST so the process is accepting requests
     # before any background work runs. /health will respond 200
     # immediately, which is the only thing Railway's health
@@ -243,7 +248,7 @@ def create_app() -> FastAPI:
             db.close()
 
     @app.get("/api/v1/setup_db")
-    def setup_db() -> dict:
+    def setup_db(authorization: str | None = None) -> dict:
         from app.db.session import Base, engine
         import app.models.orm  # noqa: F401
         try:
@@ -252,6 +257,18 @@ def create_app() -> FastAPI:
             try:
                 users_count = db.query(User).count()
                 companies_count = db.query(Company).count()
+                # Hardening: once users exist, require admin token to see counts.
+                if users_count > 0 and not authorization:
+                    return {"ok": True, "initialized": True}
+                if users_count > 0:
+                    from app.core.security import decode_token
+
+                    try:
+                        claims = decode_token(authorization.removeprefix("Bearer ").strip())
+                    except Exception:
+                        return {"ok": False, "error": "admin authorization required"}
+                    if "owner" not in (claims.get("roles") or []) and "admin" not in (claims.get("roles") or []):
+                        return {"ok": False, "error": "admin authorization required"}
                 return {
                     "ok": True,
                     "tables": list(Base.metadata.tables.keys()),

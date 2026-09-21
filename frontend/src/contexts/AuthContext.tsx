@@ -22,12 +22,24 @@ export type AuthUser = {
 
 export type AuthStatus = "loading" | "authed" | "anon";
 
+export type Workspace = {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+  current: boolean;
+};
+
 type AuthContextType = {
   status: AuthStatus;
   user: AuthUser | null;
   supabaseUser: SupabaseUser | null;
   session: Session | null;
   token: string | null;
+  workspaces: Workspace[];
+  currentWorkspace: Workspace | null;
+  switchWorkspace: (id: string) => Promise<void>;
+  refreshWorkspaces: () => Promise<void>;
   isAuthModalOpen: boolean;
   authModalMode: "signin" | "signup";
   openAuthModal: (mode?: "signin" | "signup") => void;
@@ -51,6 +63,19 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+
+  const refreshWorkspaces = useCallback(async () => {
+    try {
+      const list = await api.listWorkspaces();
+      setWorkspaces(list);
+      setCurrentWorkspace(list.find((w) => w.current) || list[0] || null);
+    } catch {
+      setWorkspaces([]);
+      setCurrentWorkspace(null);
+    }
+  }, []);
 
   const client = useMemo(() => getSupabase(), []);
 
@@ -311,6 +336,27 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     return getToken();
   }, [client]);
 
+  const switchWorkspace = useCallback(
+    async (id: string) => {
+      const res = await api.switchWorkspace(id);
+      if (res.access_token) {
+        setToken(res.access_token);
+        setTokenState(res.access_token);
+        await refreshSession();
+        await refreshWorkspaces();
+      }
+    },
+    [refreshSession, refreshWorkspaces],
+  );
+
+  useEffect(() => {
+    if (status === "authed") refreshWorkspaces();
+    else {
+      setWorkspaces([]);
+      setCurrentWorkspace(null);
+    }
+  }, [status, refreshWorkspaces]);
+
   const value = useMemo<AuthContextType>(
     () => ({
       status,
@@ -318,6 +364,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       supabaseUser,
       session,
       token,
+      workspaces,
+      currentWorkspace,
+      switchWorkspace,
+      refreshWorkspaces,
       isAuthModalOpen,
       authModalMode,
       openAuthModal,
@@ -335,6 +385,10 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       supabaseUser,
       session,
       token,
+      workspaces,
+      currentWorkspace,
+      switchWorkspace,
+      refreshWorkspaces,
       isAuthModalOpen,
       authModalMode,
       openAuthModal,

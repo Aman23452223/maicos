@@ -60,14 +60,59 @@ class ApprovalStatus(str, enum.Enum):
 
 
 class Company(Base):
+    """Workspace/tenant boundary (Phase 3). One row = one business environment."""
+
     __tablename__ = "companies"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
     autonomy_level: Mapped[int] = mapped_column(Integer, default=2)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     users: Mapped[list[User]] = relationship(back_populates="company")
+
+
+class WorkspaceMembership(Base):
+    """User ↔ workspace join (Phase 5). Enables multi-workspace per user."""
+
+    __tablename__ = "workspace_memberships"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    role: Mapped[str] = mapped_column(String(40), default="member", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_membership_user_ws", "user_id", "company_id", unique=True),
+    )
+
+
+class WorkspaceIntegration(Base):
+    """Per-workspace provider status (Phase 17). Never stores secrets."""
+
+    __tablename__ = "workspace_integrations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="not_configured", index=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_wsintegration_ws_provider", "company_id", "provider", unique=True),
+    )
 
 
 class User(Base):
@@ -329,6 +374,11 @@ class BusinessProfile(Base):
     scoring_rules: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     comms_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     followup_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    customer_segments: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    business_goals: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    enabled_capabilities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    working_hours: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    timezone: Mapped[str] = mapped_column(String(80), default="UTC")
     website_url: Mapped[str] = mapped_column(String(500), default="")
     profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -546,4 +596,94 @@ class IdempotencyKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("ix_idem_ws_key", "company_id", "key", unique=True),)
+
+
+class DocumentChunk(Base):
+    """Production RAG chunks with embeddings metadata (Phase 3).
+
+    Embeddings stored as JSON list for portability; pgvector column can be
+    added by migration when the extension is available. content_hash prevents
+    duplicate ingestion per workspace.
+    """
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id"), index=True)
+    source: Mapped[str] = mapped_column(String(255), default="upload", index=True)
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text, default="")
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    embedding: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    embedding_model: Mapped[str] = mapped_column(String(120), default="")
+    access_roles: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_chunk_ws_hash", "company_id", "content_hash"),
+        Index("ix_chunk_ws_doc", "company_id", "document_id"),
+    )
+
+
+class Pipeline(Base):
+    __tablename__ = "pipelines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), default="Sales", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PipelineStage(Base):
+    __tablename__ = "pipeline_stages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    pipeline_id: Mapped[str] = mapped_column(String(36), ForeignKey("pipelines.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Campaign(Base):
+    """Generic campaign abstraction (Phase 28). No industry logic."""
+
+    __tablename__ = "campaigns"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    goal: Mapped[str] = mapped_column(Text, default="")
+    icp: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    target_segment: Mapped[str] = mapped_column(String(255), default="")
+    geography: Mapped[str] = mapped_column(String(255), default="")
+    lead_source: Mapped[str] = mapped_column(String(120), default="manual")
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PaymentRequest(Base):
+    __tablename__ = "payment_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    opportunity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("opportunities.id"), nullable=True, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(60), default="manual", index=True)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(10), default="INR")
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    provider_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 

@@ -41,6 +41,48 @@ def _workflow_summary(wf) -> list[dict[str, Any]]:
     ]
 
 
+def _workspace_context(db: Session, principal: Principal) -> dict[str, Any]:
+    """Load business-aware execution context (generic, no industry logic)."""
+    from app.capabilities.registry import enabled_for
+    from app.intel.service import get_or_create_profile
+    from app.tenancy.membership import membership_role
+
+    role = membership_role(db, user_id=principal.user_id,
+                           company_id=principal.workspace_id)
+    if not role:
+        # Backward compat: synthetic/legacy contexts (unit tests, service
+        # principals for workspaces not yet in DB) fall back to the
+        # principal's own roles instead of hard-failing. Real workspaces
+        # with real users are still strictly enforced.
+        from app.models.orm import Company, User
+
+        workspace_exists = db.get(Company, principal.workspace_id) is not None
+        user_exists = db.get(User, principal.user_id) is not None
+        if workspace_exists and user_exists:
+            raise PermissionError("not a workspace member")
+        role = next((r for r in (principal.roles or []) if r in ("owner", "admin", "member")), "member")
+    try:
+        bp = get_or_create_profile(db, company_id=principal.workspace_id)
+        business_name, industry, icp, goals = (
+            bp.business_name, bp.industry, bp.icp or {}, bp.business_goals or [])
+    except Exception:
+        business_name, industry, icp, goals = "", "", {}, []
+    try:
+        capabilities = sorted(enabled_for(db, company_id=principal.workspace_id))
+    except Exception:
+        capabilities = []
+    return {
+        "user_id": principal.user_id,
+        "workspace_id": principal.workspace_id,
+        "role": role,
+        "business_name": business_name,
+        "industry": industry,
+        "icp": icp,
+        "goals": goals,
+        "capabilities": capabilities,
+    }
+
+
 def handle_objective(
     db: Session,
     *,
@@ -49,7 +91,39 @@ def handle_objective(
     conversation_id: str | None = None,
     enqueue_async: bool = False,
 ) -> dict[str, Any]:
+    ctx = _workspace_context(db, principal)
     plan = _build_plan(objective)
+    # Capability gate: drop tasks requiring disabled capabilities (honest skip).
+    try:
+        from app.capabilities.registry import check as cap_check
+
+        task_cap = {"sales_crm": "crm", "communication": "email",
+                    "calendar": "calendar", "knowledge": "knowledge",
+                    "analytics": "analytics", "marketing": "marketing",
+                    "finance": "finance", "hr": "hr",
+                    "customer_support": "support", "project_ops": "project_management"}
+        kept = []
+        for t in plan.get("tasks", []):
+            cap = task_cap.get(t.get("agent", ""), "")
+            if cap and not cap_check(db, company_id=principal.workspace_id,
+                                     capability=cap).get("ok"):
+                continue
+            # inject workspace context into every task input (agents read it)
+            inp = dict(t.get("input", {}))
+            inp["_workspace"] = {"id": ctx["workspace_id"], "role": ctx["role"],
+                                 "business_name": ctx["business_name"],
+                                 "industry": ctx["industry"]}
+            t["input"] = inp
+            kept.append(t)
+        if kept:
+            plan["tasks"] = kept
+    except PermissionError:
+        raise
+    except Exception:
+        pass
+    plan["_workspace_context"] = {"role": ctx["role"],
+                                  "capabilities": ctx["capabilities"],
+                                  "business_name": ctx["business_name"]}
     wf = create_workflow(
         db,
         company_id=principal.workspace_id,

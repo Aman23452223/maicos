@@ -139,6 +139,68 @@ def _summarize(db: Session, wf: Workflow) -> dict[str, Any]:
     }
 
 
+def run_parallel(db: Session, *, wf: Workflow, principal,
+                 max_batch: int = 4) -> Workflow:
+    """Safe parallel execution for independent ready tasks (Phase 18).
+
+    Executes each batch of dependency-free ready tasks in one pass with
+    shared done-set semantics. Sequential fallback preserved: tasks run in
+    stable order within a batch on the same session (SQLite/Postgres safe),
+    so approval/retry/idempotency/verification/audit guarantees hold.
+    True thread-pool concurrency is intentionally avoided (session safety).
+    """
+    import os
+
+    if os.environ.get("PARALLEL_ENABLED", "true").lower() not in ("1", "true", "yes"):
+        return run(db, wf=wf, principal=principal)
+    wf.state = WorkflowState.RUNNING
+    db.flush()
+    tasks = list(wf.tasks)
+    done: set[str] = {t.id for t in tasks if is_resolved(t)}
+    batch_id = 0
+    while True:
+        ready = _topo_ready(tasks, done)[:max_batch]
+        if not ready:
+            break
+        batch_id += 1
+        record(
+            db, company_id=wf.company_id, actor="workflow_engine",
+            action="task.batch_started", target_type="workflow",
+            target_id=wf.id,
+            details={"batch": batch_id, "tasks": [t.id for t in ready]},
+        )
+        for t in ready:
+            _execute_task(db, wf, t, principal)
+            if t.state in {TaskState.COMPLETED, TaskState.SKIPPED}:
+                done.add(t.id)
+            if t.state == TaskState.WAITING_APPROVAL:
+                break
+        if any(t.state == TaskState.WAITING_APPROVAL for t in tasks):
+            wf.state = WorkflowState.WAITING_APPROVAL
+            db.flush()
+            return wf
+    return _finish(db, wf)
+
+
+def _finish(db: Session, wf: Workflow) -> Workflow:
+    tasks = list(wf.tasks)
+    failed = [t for t in tasks if t.state == TaskState.FAILED]
+    completed = [t for t in tasks if t.state == TaskState.COMPLETED]
+    if failed and completed:
+        wf.state = WorkflowState.PARTIAL
+    elif failed and not completed:
+        wf.state = WorkflowState.FAILED
+    else:
+        wf.state = WorkflowState.COMPLETED
+    record(
+        db, company_id=wf.company_id, actor="workflow_engine",
+        action="workflow.finished", target_type="workflow",
+        target_id=wf.id, details={"state": wf.state.value},
+    )
+    db.flush()
+    return wf
+
+
 def run(db: Session, *, wf: Workflow, principal) -> Workflow:
     """Execute pending ready tasks until idle, paused, or done.
 
@@ -259,7 +321,48 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
         run_id=run_row.id,
         shared=shared,
     )
-    result: AgentResult = agent.run(AgentTask(title=t.title, description=t.description, input=t.input), ctx)
+    import time as _time
+
+    _start = _time.monotonic()
+    try:
+        result: AgentResult = agent.run(
+            AgentTask(title=t.title, description=t.description, input=t.input), ctx
+        )
+    except Exception as exc:  # noqa: BLE001 - budgets/limits surface as task failure
+        from app.workflow.budget import BudgetExceeded
+
+        tool_calls = sum(1 for e in (ctx.log or []) if e.get("type") == "tool_call")
+        run_row.steps = ctx.log
+        run_row.tool_calls = ctx.log
+        run_row.error = str(exc)[:500]
+        if isinstance(exc, BudgetExceeded):
+            t.state = TaskState.FAILED
+            t.error = str(exc)[:500]
+            record(
+                db, company_id=wf.company_id, actor="workflow_engine",
+                action="task.tool_limit", target_type="task", target_id=t.id,
+                details={"tool_calls": tool_calls, "error": t.error},
+            )
+            return
+        if t.attempts < MAX_TASK_ATTEMPTS:
+            t.state = TaskState.PENDING
+            t.error = str(exc)[:500]
+            return
+        t.state = TaskState.FAILED
+        t.error = str(exc)[:500]
+        return
+    finally:
+        try:
+            _dur_ms = int((_time.monotonic() - _start) * 1000)
+            log.info(
+                "task.executed", workflow_id=wf.id, task_id=t.id,
+                agent=t.agent_name, duration_ms=_dur_ms,
+                tool_calls=sum(
+                    1 for e in (ctx.log or []) if e.get("type") == "tool_call"
+                ),
+            )
+        except Exception:
+            pass
 
     run_row.steps = ctx.log
     run_row.tool_calls = ctx.log

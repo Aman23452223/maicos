@@ -126,6 +126,21 @@ export const api = {
     }),
   funnel: () => request<Record<string, unknown>>("/v1/analytics/funnel"),
   weeklyReport: () => request<Record<string, unknown>>("/v1/reports/weekly"),
+  listWorkspaces: () =>
+    request<{ id: string; name: string; role: string; status: string; current: boolean }[]>(
+      "/v1/workspaces",
+    ),
+  switchWorkspace: (workspace_id: string) =>
+    request<{ access_token: string }>("/v1/auth/switch", {
+      method: "POST",
+      body: JSON.stringify({ workspace_id }),
+    }),
+  integrationStatus: () =>
+    request<{
+      workspace_id: string;
+      capabilities: string[];
+      providers: { provider: string; status: string; needs: string[]; configured: boolean }[];
+    }>("/v1/integrations/status"),
   scheduleWorkflow: (objective: string, runAt: string) =>
     request<{ job_id: string; run_at: string }>(
       `/v1/workflows/schedule?objective=${encodeURIComponent(objective)}&run_at=${encodeURIComponent(runAt)}`,

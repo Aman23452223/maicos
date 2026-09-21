@@ -22,7 +22,7 @@ const ROUTE_NAMES: Record<string, { title: string; subtitle: string; icon: strin
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { user, status, signOut, openAuthModal } = useAuth();
+  const { user, status, signOut, openAuthModal, workspaces, currentWorkspace, switchWorkspace } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [systemPing, setSystemPing] = useState<"ok" | "checking" | "down">("checking");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -89,6 +89,20 @@ export function AppHeader() {
 
       {/* Right: Status Pill & Auth Controls */}
       <div className="flex items-center gap-3.5">
+        {workspaces.length > 0 && (
+          <select
+            value={currentWorkspace?.id || ""}
+            onChange={(e) => e.target.value && switchWorkspace(e.target.value)}
+            title="Current workspace — switching changes CRM, knowledge, analytics"
+            className="hidden md:block bg-white/[0.03] border border-white/[0.07] rounded-full px-3 py-1 text-[11px] text-muted max-w-[180px]"
+          >
+            {workspaces.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name} ({w.role})
+              </option>
+            ))}
+          </select>
+        )}
         {/* Backend Connectivity Status */}
         <div
           className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.07] text-xs text-muted"

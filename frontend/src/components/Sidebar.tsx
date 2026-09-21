@@ -60,6 +60,22 @@ export function Sidebar() {
 
   const pendingCount = approvals?.length ?? 0;
 
+  // Capability-driven nav: hide growth items whose capability is disabled
+  const { data: integ } = useSWR(
+    user ? "workspace-capabilities" : null,
+    () => api.integrationStatus(),
+    { refreshInterval: 60000 },
+  );
+  const caps = new Set(integ?.capabilities || []);
+  const capFor = (href: string) =>
+    href === "/leads" ? "crm" : href === "/intel" ? "website_analysis" : href === "/analytics" ? "analytics" : "";
+  const visible = (href: string) => {
+    const c = capFor(href);
+    if (!c) return true;
+    if (!integ) return true; // loading: show all, then filter
+    return caps.has(c);
+  };
+
   return (
     <aside className="w-64 border-r border-white/[0.08] bg-[#07080a] flex flex-col justify-between p-4 flex-shrink-0 z-20">
       <div>
@@ -87,7 +103,7 @@ export function Sidebar() {
                 {group.title}
               </div>
               <nav className="space-y-0.5">
-                {group.items.map((item) => {
+                {group.items.filter((i) => visible(i.href)).map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <Link

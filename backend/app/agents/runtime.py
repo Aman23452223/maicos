@@ -25,6 +25,27 @@ def call_tool(
     payload: dict,
     idempotency_key: str | None = None,
 ) -> dict:
+    # Tool-call limit enforcement (Phase 19) at execution layer.
+    from app.workflow.budget import MAX_TOOL_CALLS_PER_TASK, BudgetExceeded
+
+    used = sum(1 for e in (ctx.log or []) if e.get("type") == "tool_call")
+    if used >= MAX_TOOL_CALLS_PER_TASK:
+        try:
+            from app.audit.service import record
+
+            record(
+                ctx.db, company_id=ctx.principal.workspace_id,
+                actor=ctx.shared.get("agent_name", "agent"),
+                action="tool.limit_exceeded", target_type="task",
+                target_id=ctx.task_id,
+                details={"connector": connector, "operation": operation,
+                         "used": used, "limit": MAX_TOOL_CALLS_PER_TASK},
+            )
+        except Exception:
+            pass
+        raise BudgetExceeded(
+            f"task {ctx.task_id} exceeded {MAX_TOOL_CALLS_PER_TASK} tool calls"
+        )
     result = execute_tool(
         ctx.principal,
         connector,

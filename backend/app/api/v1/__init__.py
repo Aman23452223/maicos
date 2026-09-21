@@ -5,6 +5,7 @@ from app.api.v1 import (
     auth,
     automation,
     growth,
+    integrations_health,
     intel,
     knowledge,
     queue,
@@ -24,4 +25,5 @@ api_router.include_router(settings.router)
 api_router.include_router(queue.router)
 api_router.include_router(intel.router)
 api_router.include_router(growth.router)
+api_router.include_router(integrations_health.router)
 

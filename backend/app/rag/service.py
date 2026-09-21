@@ -86,6 +86,18 @@ def add_document(
             access_roles=access_roles,
         )
         doc.indexed = True
+        # Production chunk store (Phase 3): DB + embeddings when configured,
+        # lexical fallback otherwise. Best-effort, never breaks ingestion.
+        try:
+            from app.rag.vector_store import ingest_chunks
+
+            ingest_chunks(
+                db, company_id=company_id, document_id=doc.id,
+                source=doc.source or "upload", source_url=None,
+                text=body, access_roles=access_roles,
+            )
+        except Exception:
+            pass
     record(
         db,
         company_id=company_id,
