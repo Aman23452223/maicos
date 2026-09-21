@@ -50,9 +50,13 @@ def test_lead_import_dedup_qualify(db, workspace_user):
         "QUALIFIED", "NURTURE", "DISQUALIFIED")
 
 
-def test_discovery_requires_config():
+def test_discovery_requires_config(monkeypatch):
+    import os
+
     from app.leads.providers import get
 
+    monkeypatch.delenv("SEARCH_PROVIDER_API_KEY", raising=False)
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     res = get("search").discover("restaurants in Nagpur")
     assert res.ok is False and res.status == "NOT_CONFIGURED"
     assert res.prospects == []

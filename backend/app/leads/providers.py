@@ -77,25 +77,84 @@ class CsvImportProvider:
                                message="csv provider needs file content via import endpoint")
 
 
-class SearchProviderStub:
-    """Placeholder for a real search/business-directory API.
+class TavilySearchProvider:
+    """Real search via Tavily API (https://tavily.com).
 
-    Returns NOT_CONFIGURED until SEARCH_PROVIDER_API_KEY (or similar)
-    is wired. Never invents prospects.
+    Key from env SEARCH_PROVIDER_API_KEY or TAVILY_API_KEY (never hardcoded).
+    Results normalized into Prospect objects. No fabrication.
     """
     name = "search"
 
     def discover(self, query: str, *, limit: int = 20,
                  filters: dict | None = None) -> DiscoveryResult:
         import os
-        key = os.environ.get("SEARCH_PROVIDER_API_KEY", "")
+        from urllib.parse import urlparse
+
+        key = os.environ.get("SEARCH_PROVIDER_API_KEY",
+                             os.environ.get("TAVILY_API_KEY", ""))
         if not key:
             return DiscoveryResult(
                 ok=False, status="NOT_CONFIGURED",
                 message=("lead discovery requires a configured search provider "
                          "(set SEARCH_PROVIDER_API_KEY). No leads were invented."))
-        return DiscoveryResult(ok=False, status="FAILED",
-                               message="search provider integration not yet implemented for this key")
+        if not query.strip():
+            return DiscoveryResult(ok=False, status="FAILED",
+                                   message="empty query")
+        limit = min(max(int(limit or 5), 1), 20)
+        try:
+            import httpx
+        except Exception as exc:
+            return DiscoveryResult(ok=False, status="FAILED",
+                                   message=f"http client unavailable: {exc}")
+        try:
+            resp = httpx.post(
+                "https://api.tavily.com/search",
+                json={"api_key": key, "query": query,
+                      "max_results": limit, "search_depth": "advanced",
+                      "include_answer": False},
+                timeout=25.0,
+            )
+        except Exception as exc:
+            return DiscoveryResult(ok=False, status="PROVIDER_ERROR",
+                                   message=f"tavily request failed: {exc}"[:300])
+        if resp.status_code in (401, 403):
+            return DiscoveryResult(ok=False, status="INVALID_CONFIGURATION",
+                                   message="tavily key rejected (401/403)")
+        if resp.status_code == 429:
+            return DiscoveryResult(ok=False, status="PROVIDER_ERROR",
+                                   message="tavily rate limit (429)")
+        if resp.status_code != 200:
+            return DiscoveryResult(ok=False, status="PROVIDER_ERROR",
+                                   message=f"tavily HTTP {resp.status_code}"[:200])
+        try:
+            data = resp.json()
+        except Exception:
+            return DiscoveryResult(ok=False, status="PROVIDER_ERROR",
+                                   message="tavily returned non-JSON")
+        prospects: list[Prospect] = []
+        for item in data.get("results", [])[:limit]:
+            url = str(item.get("url", ""))
+            title = str(item.get("title", "")).strip()[:200]
+            try:
+                host = (urlparse(url).hostname or "").removeprefix("www.")
+            except Exception:
+                host = ""
+            name = title.split("|")[0].split("-")[0].strip()[:200] or host
+            if not name and not url:
+                continue
+            prospects.append(Prospect(
+                company_name=name, website=url, domain=host,
+                location=str((filters or {}).get("location", ""))[:255],
+                industry=str((filters or {}).get("industry", ""))[:120],
+                source="tavily_search", source_url=url,
+                external_id=url,
+                notes=str(item.get("content", ""))[:1000],
+            ))
+        if not prospects:
+            return DiscoveryResult(ok=False, status="PROVIDER_ERROR",
+                                   message="tavily returned zero results")
+        return DiscoveryResult(ok=True, status="OK", prospects=prospects,
+                               message=f"{len(prospects)} prospects from Tavily")
 
 
 _REGISTRY: dict[str, LeadDiscoveryProvider] = {}
@@ -117,4 +176,6 @@ def available() -> list[str]:
 
 register(ManualProvider())
 register(CsvImportProvider())
-register(SearchProviderStub())
+register(TavilySearchProvider())
+# Back-compat alias for older imports/tests
+SearchProviderStub = TavilySearchProvider
