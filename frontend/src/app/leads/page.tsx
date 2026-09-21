@@ -10,6 +10,8 @@ export default function LeadsPage() {
   const [query, setQuery] = useState("Find restaurants in Nagpur");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [prospects, setProspects] = useState<Record<string, unknown>[]>([]);
+  const [importing, setImporting] = useState(false);
 
   async function load() {
     try {
@@ -27,17 +29,36 @@ export default function LeadsPage() {
   async function handleDiscover() {
     setBusy(true);
     setMsg(null);
+    setProspects([]);
     try {
       const res = await api.discoverLeads(query);
       if (res.status === "NOT_CONFIGURED") {
         setMsg(`Discovery needs provider setup: ${res.message}`);
+      } else if (res.status !== "OK") {
+        setMsg(res.message || `Discovery failed: ${res.status}`);
       } else {
-        setMsg(`Found ${res.prospects.length} prospects`);
+        setProspects(res.prospects);
+        setMsg(`Found ${res.prospects.length} prospects below — Import dabao taaki CRM me save ho.`);
       }
     } catch (e) {
       setMsg((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleImport() {
+    if (prospects.length === 0) return;
+    setImporting(true);
+    try {
+      const r = await api.importLeads(prospects, true);
+      setMsg(`Imported: ${r.created} new, ${r.deduped} duplicate. Table neeche update ho gayi.`);
+      setProspects([]);
+      load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -76,6 +97,34 @@ export default function LeadsPage() {
           </button>
         </div>
         {msg && <div className="text-xs text-muted">{msg}</div>}
+        {prospects.length > 0 && (
+          <div className="rounded-xl border border-accent/20 bg-accent/5 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-ink">
+                Found prospects ({prospects.length}) — abhi CRM me save nahi hue
+              </div>
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="px-4 py-2 rounded-xl bg-ok text-bg text-xs font-semibold disabled:opacity-50"
+              >
+                {importing ? "Importing…" : `Import ${prospects.length} to CRM`}
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto divide-y divide-white/5 text-xs">
+              {prospects.map((p, i) => (
+                <div key={i} className="py-1.5 flex items-center justify-between gap-2">
+                  <span className="text-ink font-medium truncate">
+                    {String(p.company_name || p.website || "Unknown")}
+                  </span>
+                  <span className="text-muted truncate">
+                    {String(p.domain || p.website || "")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-5 rounded-2xl bg-[#0e1217] border border-white/[0.08]">
