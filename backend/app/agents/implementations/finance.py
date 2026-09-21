@@ -108,14 +108,14 @@ class FinanceAgent:
             iid_lookup = iid_raw if isinstance(iid_raw, str) else None
             inv = _INVOICES.get(iid_lookup) if iid_lookup else None
             if not inv:
-                return AgentResult(error=f"invoice not found: {iid}")
+                return AgentResult(error=f"invoice not found: {iid_lookup}")
             inv["status"] = "PAID"
-            _INVOICES.put(iid, inv)
+            _INVOICES.put(iid_lookup, inv)
             call_tool(
                 ctx,
                 "crm",
                 "activity.record",
-                {"type": "invoice.paid", "invoice_id": iid},
+                {"type": "invoice.paid", "invoice_id": iid_lookup},
             )
             return AgentResult(output={"invoice": inv, "ok": True, "confirmed": True})
         if action == "list_open":

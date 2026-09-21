@@ -60,14 +60,14 @@ class HRAgent:
             new_stage = task.input.get("stage")
             cand = _CANDIDATES.get(cid_lookup) if cid_lookup else None
             if not cand:
-                return AgentResult(error=f"candidate not found: {cid}")
+                return AgentResult(error=f"candidate not found: {cid_lookup}")
             cand["stage"] = new_stage
-            _CANDIDATES.put(cid, cand)
+            _CANDIDATES.put(cid_lookup, cand)
             call_tool(
                 ctx,
                 "crm",
                 "activity.record",
-                {"type": "candidate.stage_changed", "candidate_id": cid, "stage": new_stage},
+                {"type": "candidate.stage_changed", "candidate_id": cid_lookup, "stage": new_stage},
             )
             return AgentResult(output={"candidate": cand, "ok": True, "confirmed": True})
         if action == "create_onboarding_checklist":

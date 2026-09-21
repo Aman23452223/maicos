@@ -63,6 +63,44 @@ def decide_approval(
         note=payload.note,
     )
     db.commit()
+    # Auto-resume: on APPROVE, if no other PENDING approvals remain for the
+    # workflow, continue execution immediately (Phase 16). Safe because the
+    # engine replays only the approved payload and checks confirmations.
+    try:
+        from app.models.orm import TaskState, Workflow
+
+        if payload.decision.upper() == "APPROVE":
+            remaining = (
+                db.query(Approval)
+                .filter(
+                    Approval.workflow_id == a.workflow_id,
+                    Approval.status == ApprovalStatus.PENDING,
+                )
+                .count()
+            )
+            if remaining == 0:
+                from app.models.orm import Task
+                from app.workflow.engine import run as run_workflow
+
+                wf = db.get(Workflow, a.workflow_id)
+                if wf is not None:
+                    blocked = (
+                        db.query(Task)
+                        .filter(
+                            Task.workflow_id == wf.id,
+                            Task.state == TaskState.WAITING_APPROVAL,
+                        )
+                        .count()
+                    )
+                    # decide() already flipped the decided task to PENDING,
+                    # so blocked==0 means safe to resume now.
+                    if blocked == 0:
+                        run_workflow(db, wf=wf, principal=p)
+                        db.commit()
+    except Exception:
+        # Auto-resume is best-effort; manual POST /workflows/{id}/resume
+        # always remains available.
+        pass
     db.refresh(a)
     return ApprovalOut(
         id=a.id,

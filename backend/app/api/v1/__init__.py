@@ -4,6 +4,8 @@ from app.api.v1 import (
     approvals,
     auth,
     automation,
+    growth,
+    intel,
     knowledge,
     queue,
     registry,
@@ -20,4 +22,6 @@ api_router.include_router(knowledge.router)
 api_router.include_router(automation.router)
 api_router.include_router(settings.router)
 api_router.include_router(queue.router)
+api_router.include_router(intel.router)
+api_router.include_router(growth.router)
 

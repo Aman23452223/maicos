@@ -294,3 +294,256 @@ class ScheduledJob(Base):
     created_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+
+class LeadStatus(str, enum.Enum):
+    NEW = "NEW"
+    QUALIFIED = "QUALIFIED"
+    DISQUALIFIED = "DISQUALIFIED"
+    NURTURE = "NURTURE"
+    CONTACTED = "CONTACTED"
+    RESPONDED = "RESPONDED"
+    MEETING = "MEETING"
+    PROPOSAL = "PROPOSAL"
+    WON = "WON"
+    LOST = "LOST"
+
+
+class BusinessProfile(Base):
+    """Workspace-level generic business configuration (Phase 26).
+
+    One row per workspace. Stores ICP, scoring rules, policies as JSON
+    so the same core works for SaaS/agency/restaurant/clinic/etc.
+    """
+
+    __tablename__ = "business_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), unique=True, index=True)
+    business_name: Mapped[str] = mapped_column(String(255), default="")
+    industry: Mapped[str] = mapped_column(String(120), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    products_services: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    target_customer: Mapped[str] = mapped_column(Text, default="")
+    geography: Mapped[str] = mapped_column(String(255), default="")
+    icp: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    scoring_rules: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    comms_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    followup_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    website_url: Mapped[str] = mapped_column(String(500), default="")
+    profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CrmCompany(Base):
+    __tablename__ = "crm_companies"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    normalized_name: Mapped[str] = mapped_column(String(255), index=True, default="")
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    industry: Mapped[str] = mapped_column(String(120), default="")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_crm_company_ws_norm", "company_id", "normalized_name"),
+        Index("ix_crm_company_ws_domain", "company_id", "domain"),
+    )
+
+
+class CrmContact(Base):
+    __tablename__ = "crm_contacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    crm_company_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("crm_companies.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    normalized_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    role: Mapped[str] = mapped_column(String(120), default="")
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (Index("ix_crm_contact_ws_email", "company_id", "normalized_email"),)
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    company_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    normalized_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    normalized_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location: Mapped[str] = mapped_column(String(255), default="", index=True)
+    industry: Mapped[str] = mapped_column(String(120), default="", index=True)
+    source: Mapped[str] = mapped_column(String(120), default="manual", index=True)
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    enrichment_status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    status: Mapped[LeadStatus] = mapped_column(
+        Enum(LeadStatus, name="lead_status"), default=LeadStatus.NEW, index=True
+    )
+    score: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    score_version: Mapped[str] = mapped_column(String(40), default="v1")
+    score_reasons: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    owner: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    enriched_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    follow_up_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_status: Mapped[str] = mapped_column(String(40), default="none", index=True)
+    preferred_channel: Mapped[str] = mapped_column(String(40), default="email")
+    opted_out: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    converted_contact_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_lead_ws_status_score", "company_id", "status", "score"),
+        Index("ix_lead_ws_domain", "company_id", "domain"),
+        Index("ix_lead_ws_followup", "company_id", "next_follow_up_at"),
+    )
+
+
+class Opportunity(Base):
+    __tablename__ = "opportunities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    stage: Mapped[str] = mapped_column(String(80), default="new", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="open", index=True)
+    owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    expected_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CrmActivity(Base):
+    __tablename__ = "crm_activities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True, index=True)
+    contact_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    opportunity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("opportunities.id"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(80), default="note", index=True)
+    subject: Mapped[str] = mapped_column(String(255), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FollowUp(Base):
+    __tablename__ = "follow_ups"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("leads.id"), index=True)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    channel: Mapped[str] = mapped_column(String(40), default="email")
+    status: Mapped[str] = mapped_column(String(40), default="scheduled", index=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=0)
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InboundMessage(Base):
+    __tablename__ = "inbound_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True, index=True)
+    channel: Mapped[str] = mapped_column(String(40), default="email", index=True)
+    from_address: Mapped[str] = mapped_column(String(255), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    classification: Mapped[str] = mapped_column(String(60), default="UNCLASSIFIED", index=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProposalDocument(Base):
+    __tablename__ = "proposal_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True, index=True)
+    opportunity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("opportunities.id"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(60), default="proposal", index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    onboarding_state: Mapped[str] = mapped_column(String(60), default="pending", index=True)
+    checklist: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class IdempotencyKey(Base):
+    __tablename__ = "idempotency_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    key: Mapped[str] = mapped_column(String(128), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(128))
+    result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_idem_ws_key", "company_id", "key", unique=True),)
+

@@ -296,6 +296,22 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
         run_row.error = result.error
         return
 
+    # Verify-before-completion (Phase 17): agents must not report silent
+    # success when a provider is NOT_CONFIGURED/FAILED. Treat such outputs
+    # as task failure so workflows reach PARTIAL/FAILED honestly.
+    _status = (result.output or {}).get("status")
+    if _status in ("NOT_CONFIGURED", "FAILED", "UNAVAILABLE"):
+        msg = (result.output or {}).get("message") or (result.output or {}).get(
+            "error") or f"provider reported {_status}"
+        if t.attempts < MAX_TASK_ATTEMPTS:
+            t.state = TaskState.PENDING
+            t.error = str(msg)[:500]
+            return
+        t.state = TaskState.FAILED
+        t.error = str(msg)[:500]
+        run_row.error = t.error
+        return
+
     t.output = result.output or {}
     t.state = TaskState.COMPLETED
     t.error = None

@@ -19,6 +19,14 @@ INTENTS = {
     "meeting_prep": ["prepare", "meeting", "brief"],
     "create_project": ["launch", "create project", "new project"],
     "invoice_followup": ["overdue", "invoice", "payment reminder", "receivable"],
+    "lead_generation": [
+        "find", "prospect", "lead generation", "generate leads",
+        "qualified prospects", "potential customer", "potential restaurant",
+        "restaurant", "nagpur",
+    ],
+    "website_analysis": ["analyze website", "website", "target customer", "services"],
+    "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
+    "weekly_review": ["weekly", "report", "pipeline", "analytics", "stuck"],
     "lead_followup": ["follow up", "follow-up", "inactive lead"],
 }
 
@@ -215,10 +223,72 @@ def _plan_generic(objective: str) -> dict[str, Any]:
     }
 
 
+def _plan_lead_generation(objective: str) -> dict[str, Any]:
+    """Generic DISCOVER→ENRICH→QUALIFY→CRM→OUTREACH→REPORT primitives."""
+    from app.workflow.templates import lead_generation
+
+    plan = lead_generation()
+    # carry the raw objective into the first task so agents can parse queries
+    if plan["tasks"]:
+        plan["tasks"][0]["input"]["objective"] = objective
+    return plan
+
+
+def _plan_website_analysis(objective: str) -> dict[str, Any]:
+    import re
+
+    m = re.search(r"https?://[^\s\"']+", objective)
+    url = m.group(0) if m else ""
+    return {
+        "intent": "website_analysis",
+        "tasks": [
+            {
+                "id": "analyze_site",
+                "agent": "knowledge",
+                "title": "Analyze website",
+                "description": "Fetch + extract business profile + ingest to RAG.",
+                "input": {"action": "analyze_website", "url": url, "objective": objective},
+                "depends_on": [],
+            },
+            {
+                "id": "report",
+                "agent": "analytics",
+                "title": "Summarize business profile",
+                "description": "Report extracted services/target customers.",
+                "input": {"action": "report"},
+                "depends_on": ["analyze_site"],
+            },
+        ],
+    }
+
+
+def _plan_lead_outreach(objective: str) -> dict[str, Any]:
+    from app.workflow.templates import lead_outreach
+
+    plan = lead_outreach()
+    if plan["tasks"]:
+        plan["tasks"][0]["input"]["objective"] = objective
+    return plan
+
+
+def _plan_weekly_review(objective: str) -> dict[str, Any]:
+    from app.workflow.templates import weekly_review
+
+    return weekly_review()
+
+
 def build_plan(objective: str) -> dict[str, Any]:
     intent = classify(objective)
     if intent == "onboard_client":
         return _plan_onboard_client(objective)
+    if intent == "lead_generation":
+        return _plan_lead_generation(objective)
+    if intent == "website_analysis":
+        return _plan_website_analysis(objective)
+    if intent == "lead_outreach":
+        return _plan_lead_outreach(objective)
+    if intent == "weekly_review":
+        return _plan_weekly_review(objective)
     if intent == "lead_followup":
         return _plan_lead_followup(objective)
     if intent == "invoice_followup":

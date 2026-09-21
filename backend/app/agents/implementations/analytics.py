@@ -20,6 +20,24 @@ class AnalyticsAgent:
 
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action", "summarize")
+        if action in ("funnel", "pipeline", "operations", "report", "weekly_report"):
+            try:
+                from app.analytics.metrics import (
+                    funnel as _funnel,
+                    operations as _ops,
+                    pipeline as _pipe,
+                    weekly_report as _weekly,
+                )
+            except Exception as exc:
+                return AgentResult(error=f"analytics store unavailable: {exc}")
+            ws = ctx.principal.workspace_id
+            if action == "funnel":
+                return AgentResult(output=_funnel(ctx.db, company_id=ws))
+            if action == "pipeline":
+                return AgentResult(output=_pipe(ctx.db, company_id=ws))
+            if action == "operations":
+                return AgentResult(output=_ops(ctx.db, company_id=ws))
+            return AgentResult(output=_weekly(ctx.db, company_id=ws))
         series: list[float] = task.input.get("series", []) or []
         if action == "summarize" and series:
             return AgentResult(
