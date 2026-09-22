@@ -86,10 +86,37 @@ export const api = {
   listAudit: () => request<AuditEvent[]>("/v1/audit"),
   listDocuments: () => request<DocumentInfo[]>("/v1/documents"),
   listConversations: () => request<ConversationSummary[]>("/v1/conversations"),
-  analyzeWebsite: (url: string) =>
-    request<{ ok: boolean; profile: Record<string, unknown>; document_id: string; pages_crawled: number }>(
-      "/v1/intel/analyze-website",
-      { method: "POST", body: JSON.stringify({ url, use_llm: false }) },
+  analyzeWebsite: (url: string, analysis_type = "my_business") =>
+    request<{
+      ok: boolean;
+      profile: Record<string, unknown>;
+      document_id: string;
+      pages_crawled: number;
+      analysis_id: string;
+      version: number;
+      updated: boolean;
+      saved_to_knowledge: boolean;
+    }>("/v1/intel/analyze-website", {
+      method: "POST",
+      body: JSON.stringify({ url, use_llm: false, analysis_type }),
+    }),
+  listIntelAnalyses: (analysis_type?: string) =>
+    request<
+      {
+        id: string;
+        type: string;
+        url: string;
+        company_name: string;
+        version: number;
+        status: string;
+        last_analyzed_at: string | null;
+        document_id: string | null;
+      }[]
+    >(`/v1/intel/analyses${analysis_type ? `?analysis_type=${analysis_type}` : ""}`),
+  convertProspect: (analysis_id: string) =>
+    request<{ ok: boolean; created: number; deduped: number }>(
+      `/v1/intel/prospect/${analysis_id}/convert-lead`,
+      { method: "POST" },
     ),
   getBusinessProfile: () => request<BusinessProfile>("/v1/business/profile"),
   updateBusinessProfile: (payload: Record<string, unknown>) =>
@@ -126,6 +153,31 @@ export const api = {
     }),
   funnel: () => request<Record<string, unknown>>("/v1/analytics/funnel"),
   weeklyReport: () => request<Record<string, unknown>>("/v1/reports/weekly"),
+  integrationCatalog: () =>
+    request<{
+      workspace_id: string;
+      integrations: {
+        provider: string;
+        name: string;
+        description: string;
+        auth_type: string;
+        actions: string[];
+        status: string;
+        detail: string;
+        account: string;
+        note: string;
+      }[];
+    }>("/v1/integrations/catalog"),
+  connectIntegration: (provider: string, account?: string) =>
+    request<{ provider: string; status: string; detail?: string }>(
+      `/v1/integrations/${provider}/connect`,
+      { method: "POST", body: JSON.stringify(account ? { account } : {}) },
+    ),
+  disconnectIntegration: (provider: string) =>
+    request<{ provider: string; status: string }>(
+      `/v1/integrations/${provider}/disconnect`,
+      { method: "POST" },
+    ),
   listWorkspaces: () =>
     request<{ id: string; name: string; role: string; status: string; current: boolean }[]>(
       "/v1/workspaces",

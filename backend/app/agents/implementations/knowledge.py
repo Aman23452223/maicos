@@ -35,6 +35,8 @@ class KnowledgeAgent:
                 out = analyze_website(
                     ctx.db, company_id=ctx.principal.workspace_id, url=url,
                     actor=ctx.principal.user_id, use_llm=True,
+                    analysis_type=str(task.input.get("analysis_type")
+                                      or "my_business"),
                 )
             except ValueError as exc:
                 return AgentResult(error=str(exc))

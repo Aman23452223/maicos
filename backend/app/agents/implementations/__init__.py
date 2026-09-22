@@ -7,6 +7,7 @@ from app.agents.implementations import (  # noqa: F401
     customer_support,
     finance,
     hr,
+    integrations,
     knowledge,
     marketing,
     project_ops,

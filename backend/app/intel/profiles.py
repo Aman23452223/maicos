@@ -49,6 +49,11 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
     social = sorted({s for p in pages for s in p.social_links})[:20]
     ctas = sorted({c for p in pages for c in p.ctas})[:20]
     desc = home.meta_description or all_text[:600]
+    offers = _extract_offers(all_text)
+    pricing = _extract_pricing(all_text)
+    menu = _extract_menu(all_text)
+    hours = _extract_hours(all_text)
+    faqs = _extract_faqs(pages)
     # Generic deterministic audience/geography inference (no industry hardcode):
     # derive from location signals + CTA intent + top services.
     geography = _infer_geography(all_text, phones)
@@ -63,7 +68,11 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
         "industries_served": industries,
         "target_customer": target_customer,
         "geography": geography,
-        "pricing_info": "",
+        "pricing_info": pricing,
+        "offers": offers,
+        "menu": menu,
+        "opening_hours": hours,
+        "faqs": faqs,
         "emails": emails,
         "phones": phones,
         "social_links": social,
@@ -73,6 +82,76 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
         "pages_crawled": len(pages),
         "extraction": "deterministic",
     }
+
+
+def _extract_offers(text: str) -> list[str]:
+    """Sentences with offer/discount/deal intent (generic keywords)."""
+    out: list[str] = []
+    for sent in re.split(r"[.\n•|]+", text):
+        s = sent.strip()
+        if 8 < len(s) < 200 and any(
+            k in s.lower() for k in ("offer", "discount", "% off", "deal",
+                                     "coupon", "promo", "happy hour", "combo",
+                                     "free delivery", "buy 1 get")
+        ):
+            if s not in out:
+                out.append(s)
+        if len(out) >= 10:
+            break
+    return out
+
+
+def _extract_pricing(text: str) -> str:
+    """First pricing-like snippets (currency + amount). Generic."""
+    hits = re.findall(r"(?:₹|\$|€|£|Rs\.?)\s?[\d,]+(?:\.\d{1,2})?", text)
+    if not hits:
+        m = re.search(r"\b(price|pricing|starting at|from)\b.{0,60}", text, re.IGNORECASE)
+        return m.group(0).strip()[:300] if m else ""
+    seen: list[str] = []
+    for h in hits:
+        if h not in seen:
+            seen.append(h)
+        if len(seen) >= 8:
+            break
+    return ("Prices seen: " + ", ".join(seen))[:500]
+
+
+def _extract_menu(text: str) -> list[str]:
+    """Food/service menu-like lines (generic menu section heuristics)."""
+    out: list[str] = []
+    for sent in re.split(r"[.\n•|]+", text):
+        s = sent.strip()
+        if 4 < len(s) < 140 and any(
+            k in s.lower() for k in ("menu", "starter", "mains", "biryani",
+                                     "dessert", "drinks", "platter", "thali",
+                                     "pizza", "burger", "combo meal")
+        ):
+            if s not in out:
+                out.append(s)
+        if len(out) >= 15:
+            break
+    return out
+
+
+def _extract_hours(text: str) -> str:
+    m = re.search(
+        r"((?:open|opening|hours|timing)[^.\n]{0,120}|"
+        r"\b\d{1,2}\s?(?:am|pm)\s?[-–to]+\s?\d{1,2}\s?(?:am|pm))",
+        text, re.IGNORECASE,
+    )
+    return m.group(1).strip()[:300] if m else ""
+
+
+def _extract_faqs(pages: list[PageData]) -> list[dict[str, str]]:
+    """Question-like sentences with following answer (generic)."""
+    faqs: list[dict[str, str]] = []
+    for p in pages:
+        for sent in re.split(r"[.\n]+", p.text):
+            s = sent.strip()
+            if 12 < len(s) < 200 and s.endswith("?"):
+                if len(faqs) < 10:
+                    faqs.append({"question": s, "page": p.url})
+    return faqs
 
 
 def _infer_geography(text: str, phones: list[str]) -> str:

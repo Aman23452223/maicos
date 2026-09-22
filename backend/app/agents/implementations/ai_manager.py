@@ -25,6 +25,8 @@ INTENTS = {
         "restaurant", "nagpur",
     ],
     "website_analysis": ["analyze website", "website", "target customer", "services"],
+    "integration_request": ["zomato", "whatsapp", "google sheets", "instagram",
+                            "order summary", "today's orders", "menu availability"],
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
     "weekly_review": ["weekly", "report", "pipeline", "analytics", "stuck"],
     "lead_followup": ["follow up", "follow-up", "inactive lead"],
@@ -262,6 +264,37 @@ def _plan_website_analysis(objective: str) -> dict[str, Any]:
     }
 
 
+def _plan_integration_request(objective: str) -> dict[str, Any]:
+    """Route authorized-integration questions to the integrations agent.
+
+    Provider detected generically from the catalog names (no industry logic).
+    """
+    from app.integrations.catalog import CATALOG
+
+    low = objective.lower()
+    provider = next((e["provider"] for e in CATALOG if e["provider"] in low
+                     or e["name"].lower() in low), "")
+    action = ""
+    if "order" in low:
+        action = "get_orders"
+    elif "menu" in low:
+        action = "get_menu"
+    elif "availab" in low:
+        action = "update_availability"
+    return {
+        "intent": "integration_request",
+        "tasks": [{
+            "id": "integration",
+            "agent": "integrations",
+            "title": f"Integration: {provider or 'unknown'} {action or 'status'}",
+            "description": objective,
+            "input": {"provider": provider, "action": action,
+                      "payload": {"query": objective}},
+            "depends_on": [],
+        }],
+    }
+
+
 def _plan_lead_outreach(objective: str) -> dict[str, Any]:
     from app.workflow.templates import lead_outreach
 
@@ -285,6 +318,8 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_lead_generation(objective)
     if intent == "website_analysis":
         return _plan_website_analysis(objective)
+    if intent == "integration_request":
+        return _plan_integration_request(objective)
     if intent == "lead_outreach":
         return _plan_lead_outreach(objective)
     if intent == "weekly_review":

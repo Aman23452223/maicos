@@ -16,6 +16,7 @@ router = APIRouter(tags=["intel"])
 class AnalyzeIn(BaseModel):
     url: str
     use_llm: bool = False
+    analysis_type: str = "my_business"
 
 
 class BusinessConfigIn(BaseModel):
@@ -32,13 +33,40 @@ class BusinessConfigIn(BaseModel):
 @router.post("/intel/analyze-website")
 def analyze(payload: AnalyzeIn, p: Principal = Depends(get_current_principal),
             db: Session = Depends(get_db)):
+    from app.intel.service import ANALYSIS_TYPES
+    if payload.analysis_type not in ANALYSIS_TYPES:
+        raise HTTPException(status_code=400,
+                            detail=f"analysis_type must be one of {ANALYSIS_TYPES}")
     try:
         out = analyze_website(db, company_id=p.workspace_id, url=payload.url,
-                              actor=p.user_id, use_llm=payload.use_llm)
+                              actor=p.user_id, use_llm=payload.use_llm,
+                              analysis_type=payload.analysis_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not out.get("ok"):
         raise HTTPException(status_code=422, detail=out.get("error") or "fetch failed")
+    db.commit()
+    return out
+
+
+@router.get("/intel/analyses")
+def analyses(analysis_type: str | None = None,
+             p: Principal = Depends(get_current_principal),
+             db: Session = Depends(get_db)):
+    from app.intel.service import list_analyses
+    return list_analyses(db, company_id=p.workspace_id,
+                         analysis_type=analysis_type)
+
+
+@router.post("/intel/prospect/{analysis_id}/convert-lead")
+def prospect_to_lead(analysis_id: str,
+                     p: Principal = Depends(get_current_principal),
+                     db: Session = Depends(get_db)):
+    from app.intel.service import convert_prospect_to_lead
+    out = convert_prospect_to_lead(db, company_id=p.workspace_id,
+                                   analysis_id=analysis_id, actor=p.user_id)
+    if not out.get("ok"):
+        raise HTTPException(status_code=404, detail=out.get("error"))
     db.commit()
     return out
 

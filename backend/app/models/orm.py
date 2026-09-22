@@ -627,6 +627,36 @@ class DocumentChunk(Base):
     )
 
 
+class BusinessIntelAnalysis(Base):
+    """Business Intel research record (NOT an integration).
+
+    One row per (workspace, analysis_type, normalized URL). Re-analysis
+    merges into the same row (version++, last_analyzed_at). Types:
+    my_business (feeds BusinessProfile), competitor, prospect.
+    """
+
+    __tablename__ = "business_intel_analyses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    analysis_type: Mapped[str] = mapped_column(String(40), default="my_business", index=True)
+    source_url: Mapped[str] = mapped_column(String(500), default="")
+    normalized_url: Mapped[str] = mapped_column(String(500), default="", index=True)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="ready", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_intel_ws_type_url", "company_id", "analysis_type", "normalized_url"),
+    )
+
+
 class Pipeline(Base):
     __tablename__ = "pipelines"
 
