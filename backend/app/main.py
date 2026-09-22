@@ -127,12 +127,25 @@ async def _lifespan_init(s, log, redact) -> None:
     # Auto-create tables on startup if DB is reachable
     if db_ok:
         try:
-            from app.db.session import engine, Base
             import app.models.orm  # noqa: F401
+            from app.db.session import Base, engine
             Base.metadata.create_all(bind=engine)
             log.info("db.create_all_ok")
         except Exception as exc:  # noqa: BLE001
             log.error("db.create_all_failed", error=str(exc))
+        # Repair pre-existing tables missing newer columns (create_all never
+        # ALTERs; the legacy alembic chain cannot run on these DBs).
+        try:
+            from app.db.ensure_schema import ensure_schema
+            from app.db.session import engine
+
+            added = ensure_schema(engine)
+            if added["tables"] or added["columns"]:
+                log.info("db.schema_repaired", added=added)
+            else:
+                log.info("db.schema_ok")
+        except Exception as exc:  # noqa: BLE001
+            log.error("db.schema_repair_failed", error=str(exc))
 
     # Auto-migrate on startup, but only if the DB is reachable.
     if db_ok and s.worker_enabled:
@@ -249,10 +262,16 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/setup_db")
     def setup_db(authorization: str | None = None) -> dict:
-        from app.db.session import Base, engine
         import app.models.orm  # noqa: F401
+        from app.db.session import Base, engine
         try:
             Base.metadata.create_all(bind=engine)
+            try:
+                from app.db.ensure_schema import ensure_schema
+
+                ensure_schema(engine)
+            except Exception:
+                pass
             db = SessionLocal()
             try:
                 users_count = db.query(User).count()
