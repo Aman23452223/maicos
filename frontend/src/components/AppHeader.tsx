@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const ROUTE_NAMES: Record<string, { title: string; subtitle: string; icon: string }> = {
   "/": { title: "Overview", subtitle: "Workspace Dashboard", icon: "📊" },
+  "/dashboard": { title: "Dashboard", subtitle: "Live Business Overview", icon: "📊" },
   "/command": { title: "Command Center", subtitle: "Natural Language Task Delegation", icon: "⚡" },
   "/workflows": { title: "Workflows", subtitle: "Autonomous Execution Pipeline", icon: "🔁" },
   "/approvals": { title: "Approval Center", subtitle: "Human-in-the-Loop Decisions", icon: "🛡️" },
