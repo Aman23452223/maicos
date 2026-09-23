@@ -23,15 +23,12 @@ class CommunicationAgent:
 
     @staticmethod
     def _auto_approved(ctx: AgentContext, channel: str) -> bool:
-        """Workspace owner can opt channels out of approval (comms_policy)."""
-        try:
-            from app.intel.service import get_or_create_profile
+        """Workspace owner can opt channels out of approval (risk policy)."""
+        from app.policy.risk import workspace_allows
 
-            bp = get_or_create_profile(ctx.db, company_id=ctx.principal.workspace_id)
-            auto = ((bp.comms_policy or {}).get("auto_approve") or [])
-            return channel in [str(a).lower() for a in auto]
-        except Exception:
-            return False
+        return workspace_allows(ctx.db, company_id=ctx.principal.workspace_id,
+                                action="send_external_communication",
+                                channel=channel)
 
     def _deliver(self, ctx: AgentContext, channel: str,
                  payload: dict) -> dict:

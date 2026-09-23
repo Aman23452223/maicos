@@ -91,6 +91,30 @@ CATALOG: list[dict[str, Any]] = [
         "required_envs": ["SEARCH_PROVIDER_API_KEY", "TAVILY_API_KEY"],
         "actions": ["search"],
     },
+    {
+        "provider": "github",
+        "name": "GitHub",
+        "description": "Repository read + pull requests (scoped token).",
+        "auth_type": "api_key",
+        "required_envs": ["GITHUB_TOKEN"],
+        "actions": ["repo_info", "open_pr"],
+    },
+    {
+        "provider": "vercel",
+        "name": "Vercel",
+        "description": "Deployment status for projects.",
+        "auth_type": "api_key",
+        "required_envs": ["VERCEL_TOKEN"],
+        "actions": ["list_deployments"],
+    },
+    {
+        "provider": "railway",
+        "name": "Railway",
+        "description": "Service/account status.",
+        "auth_type": "api_key",
+        "required_envs": ["RAILWAY_TOKEN"],
+        "actions": ["status"],
+    },
 ]
 
 
@@ -153,8 +177,26 @@ def execute_action(provider: str, action: str, payload: dict,
     v = verify(provider)
     if not v.get("ok"):
         return v
-    # Only search has a live executor here; others route via existing
-    # provider modules when their credentials verify.
+    # Live executors; others route via existing provider modules when
+    # their credentials verify.
+    if provider == "github":
+        from app.devops import providers as devops
+
+        if action == "repo_info":
+            return devops.github_repo_info(str(payload.get("repo", "")))
+        if action == "open_pr":
+            return devops.github_open_pr(
+                str(payload.get("repo", "")), str(payload.get("title", "")),
+                str(payload.get("head", "")), str(payload.get("base", "main")),
+                str(payload.get("body", "")))
+    if provider == "vercel" and action == "list_deployments":
+        from app.devops import providers as devops
+
+        return devops.vercel_deployments(str(payload.get("project", "")))
+    if provider == "railway" and action == "status":
+        from app.devops import providers as devops
+
+        return devops.railway_status()
     if provider == "search_tavily":
         from app.leads.providers import get as get_discovery
         res = get_discovery("search").discover(

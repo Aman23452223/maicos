@@ -143,6 +143,35 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  listGoals: () =>
+    request<{ id: string; text: string; status: string }[]>("/v1/business/goals"),
+  addGoal: (text: string) =>
+    request<{ id: string; text: string; status: string }>("/v1/business/goals", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  deleteGoal: (id: string) =>
+    request<{ ok: boolean }>(`/v1/business/goals/${id}`, { method: "DELETE" }),
+  capabilityGap: (intent: string) =>
+    request<{
+      intent: string;
+      capabilities: { capability: string; status: string; detail: string }[];
+      blockers: string[];
+      ready: boolean;
+      next_steps: string[];
+    }>(`/v1/capabilities/gap?intent=${encodeURIComponent(intent)}`),
+  replanWorkflow: (id: string) => request<Workflow>(`/v1/workflows/${id}/replan`, { method: "POST" }),
+  insights: () =>
+    request<{ type: string; insights: { kind: string; severity: string; message: string; action: string }[] }>(
+      "/v1/insights",
+    ),
+  saveMemory: (kind: string, key: string, value: string) =>
+    request<{ id: string }>("/v1/memory", {
+      method: "POST",
+      body: JSON.stringify({ kind, key, value }),
+    }),
+  listMemory: () =>
+    request<{ id: string; kind: string; key: string; value: string }[]>("/v1/memory"),
   discoverLeads: (query: string, provider = "search", limit = 20) =>
     request<{ status: string; message: string; prospects: Record<string, unknown>[] }>(
       "/v1/leads/discover",

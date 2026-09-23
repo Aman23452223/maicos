@@ -68,6 +68,16 @@ def _workspace_context(db: Session, principal: Principal) -> dict[str, Any]:
     except Exception:
         business_name, industry, icp, goals = "", "", {}, []
     try:
+        from app.models.orm import BusinessMemory
+
+        mem_rows = (db.query(BusinessMemory)
+                    .filter(BusinessMemory.company_id == principal.workspace_id)
+                    .order_by(BusinessMemory.updated_at.desc()).limit(20).all())
+        memory = [{"kind": m.kind, "key": m.key, "value": m.value[:500]}
+                  for m in mem_rows]
+    except Exception:
+        memory = []
+    try:
         capabilities = sorted(enabled_for(db, company_id=principal.workspace_id))
     except Exception:
         capabilities = []
@@ -79,6 +89,7 @@ def _workspace_context(db: Session, principal: Principal) -> dict[str, Any]:
         "industry": industry,
         "icp": icp,
         "goals": goals,
+        "memory": memory,
         "capabilities": capabilities,
     }
 
@@ -113,7 +124,12 @@ def handle_objective(
             inp = dict(t.get("input", {}))
             inp["_workspace"] = {"id": ctx["workspace_id"], "role": ctx["role"],
                                  "business_name": ctx["business_name"],
-                                 "industry": ctx["industry"]}
+                                 "industry": ctx["industry"],
+                                 "goals": [g.get("text", "") for g in ctx["goals"]
+                                           if g.get("status", "active") == "active"][:5],
+                                 "memory_facts": [f"{m['key']}: {m['value']}"[:200]
+                                                  for m in ctx["memory"]
+                                                  if m["kind"] in ("fact", "preference")][:10]}
             t["input"] = inp
             kept.append(t)
         if kept:

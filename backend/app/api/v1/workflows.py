@@ -26,6 +26,12 @@ def submit_command(
     p: Principal = Depends(get_current_principal),
     db: Session = Depends(get_db),
 ) -> WorkflowOut:
+    from app.core.ratelimit import check as _rl_check
+
+    allowed, retry_after = _rl_check(f"cmd:{p.workspace_id}")
+    if not allowed:
+        raise HTTPException(status_code=429,
+                            detail=f"rate limit: retry in {retry_after}s")
     conv_id = payload.conversation_id
     if not conv_id:
         conv = Conversation(company_id=p.workspace_id, user_id=p.user_id)
@@ -197,6 +203,40 @@ def patch_task(
         description=t.description, state=t.state.value,
         depends_on=t.depends_on or [], output=t.output or {}, error=t.error,
     )
+
+
+@router.post("/workflows/{workflow_id}/replan", response_model=WorkflowOut)
+def replan(
+    workflow_id: str,
+    p: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+) -> WorkflowOut:
+    """Safe replan: builds a FRESH workflow from failure context.
+
+    The failed workflow is never mutated; the new plan references it via
+    plan.parent_workflow_id. Only failed/partial workflows can replan.
+    """
+    from app.orchestrator import handle_objective
+
+    wf = db.get(Workflow, workflow_id)
+    if not wf or wf.company_id != p.workspace_id:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    if wf.state not in {WorkflowState.FAILED, WorkflowState.PARTIAL}:
+        raise HTTPException(status_code=409,
+                            detail=f"only FAILED/PARTIAL workflows replan (is {wf.state.value})")
+    failed = [f"{t.agent_name}:{t.title} ({t.error or 'no detail'})"
+              for t in wf.tasks if t.state == TaskState.FAILED]
+    objective = (f"{wf.objective}\n[Replan context: previous attempt had "
+                 f"{len(failed)} failed task(s): {'; '.join(failed[:5])}. "
+                 f"Prefer alternative capabilities and split risky steps.]")
+    result = handle_objective(db, principal=p, objective=objective,
+                              conversation_id=wf.conversation_id)
+    child = db.get(Workflow, result["workflow_id"])
+    plan = dict(child.plan or {})
+    plan["parent_workflow_id"] = wf.id
+    child.plan = plan
+    db.commit()
+    return get_workflow(result["workflow_id"], p, db)
 
 
 @router.post("/workflows/{workflow_id}/resume", response_model=WorkflowOut)

@@ -17,6 +17,7 @@ const ROUTE_NAMES: Record<string, { title: string; subtitle: string; icon: strin
   "/audit": { title: "Audit Trail", subtitle: "Immutable Action Log & Compliance", icon: "📜" },
   "/settings": { title: "Settings", subtitle: "LLM Providers & Workspace Config", icon: "⚙️" },
   "/leads": { title: "Leads & CRM", subtitle: "Discovery, Qualification & Pipeline", icon: "🎯" },
+  "/business": { title: "Business Profile", subtitle: "Goals, ICP & Workspace Context", icon: "🏢" },
   "/intel": { title: "Business Intel", subtitle: "Website Analysis & Business Profile", icon: "🌐" },
   "/analytics": { title: "Analytics", subtitle: "Funnel, Pipeline & Reports", icon: "📈" },
 };

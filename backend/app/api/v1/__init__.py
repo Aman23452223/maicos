@@ -5,6 +5,7 @@ from app.api.v1 import (
     auth,
     automation,
     connections,
+    context,
     growth,
     integrations_health,
     intel,
@@ -28,4 +29,5 @@ api_router.include_router(intel.router)
 api_router.include_router(growth.router)
 api_router.include_router(integrations_health.router)
 api_router.include_router(connections.router)
+api_router.include_router(context.router)
 

@@ -242,6 +242,69 @@ def weekly(p: Principal = Depends(get_current_principal),
     return weekly_report(db, company_id=p.workspace_id)
 
 
+@router.get("/insights")
+def insights(p: Principal = Depends(get_current_principal),
+             db: Session = Depends(get_db)):
+    """Proactive business signals from real workspace data (read-only)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.orm import (Approval, ApprovalStatus, FollowUp, Lead,
+                                LeadStatus, Task, TaskState, Workflow,
+                                WorkflowState)
+    from sqlalchemy import func
+
+    now = datetime.now(UTC)
+    week_ago = now - timedelta(days=7)
+    day_ago = now - timedelta(hours=24)
+    out: list[dict] = []
+
+    stalled = db.query(func.count(Lead.id)).filter(
+        Lead.company_id == p.workspace_id,
+        Lead.status == LeadStatus.QUALIFIED,
+        (Lead.last_contacted_at.is_(None)) | (Lead.last_contacted_at < week_ago),
+    ).scalar() or 0
+    if stalled:
+        out.append({"kind": "stalled_leads", "severity": "medium",
+                    "message": f"{stalled} qualified lead(s) with no contact in 7 days.",
+                    "action": "Run a follow-up: 'follow up with qualified leads'."})
+
+    due = db.query(func.count(FollowUp.id)).filter(
+        FollowUp.company_id == p.workspace_id, FollowUp.status == "scheduled",
+        FollowUp.due_at <= now).scalar() or 0
+    if due:
+        out.append({"kind": "followup_due", "severity": "medium",
+                    "message": f"{due} follow-up(s) due now.",
+                    "action": "POST /followups/run-due (approval-gated sends)."})
+
+    failed = db.query(func.count(Workflow.id)).filter(
+        Workflow.company_id == p.workspace_id,
+        Workflow.state == WorkflowState.FAILED,
+        Workflow.updated_at >= day_ago).scalar() or 0
+    if failed:
+        out.append({"kind": "workflow_failures", "severity": "high",
+                    "message": f"{failed} workflow(s) failed in the last 24h.",
+                    "action": "Review Workflows, then POST /workflows/{id}/replan."})
+
+    appr = db.query(func.count(Approval.id)).filter(
+        Approval.company_id == p.workspace_id,
+        Approval.status == ApprovalStatus.PENDING).scalar() or 0
+    if appr:
+        out.append({"kind": "approvals_waiting", "severity": "low",
+                    "message": f"{appr} approval(s) waiting.",
+                    "action": "Review the Approval Center."})
+
+    old_tasks = db.query(func.count(Task.id)).filter(
+        Task.state == TaskState.PENDING,
+        Task.workflow_id.in_(
+            db.query(Workflow.id).filter(Workflow.company_id == p.workspace_id)),
+        Task.created_at < day_ago).scalar() or 0
+    if old_tasks:
+        out.append({"kind": "stuck_tasks", "severity": "medium",
+                    "message": f"{old_tasks} task(s) pending over 24h.",
+                    "action": "Resume or replan their workflows."})
+    return {"type": "actual", "insights": out}
+
+
 @router.get("/activities")
 def activities(lead_id: str | None = None, limit: int = 50,
                p: Principal = Depends(get_current_principal),

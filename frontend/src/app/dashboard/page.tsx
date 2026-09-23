@@ -15,6 +15,8 @@ export default function DashboardPage() {
   const { data: workflows } = useSWR(user ? "dash-workflows" : null, () =>
     api.listWorkflows(),
   );
+  const { data: insightData } = useSWR(user ? "dash-insights" : null, () => api.insights());
+  const insights = insightData?.insights || [];
 
   const f = (funnel as Record<string, unknown>) || {};
   const ops = ((report as Record<string, unknown> | null)?.operations as Record<string, unknown>) || {};
@@ -45,6 +47,17 @@ export default function DashboardPage() {
         {stat("Won", String(f.won ?? "—"), "/analytics")}
         {stat("Pending approvals", String(approvals?.length ?? "—"), "/approvals")}
       </div>
+
+      {insights.length > 0 && (
+        <div className="p-5 rounded-2xl bg-warn/5 border border-warn/20 space-y-1.5">
+          <div className="text-xs font-semibold text-ink">🔔 Needs attention</div>
+          {insights.map((s) => (
+            <div key={s.kind} className="text-xs text-muted">
+              <span className="text-warn font-medium">[{s.severity}]</span> {s.message} {s.action}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="p-5 rounded-2xl bg-[#0e1217] border border-white/[0.08]">

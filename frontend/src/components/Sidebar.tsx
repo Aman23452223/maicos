@@ -34,6 +34,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "GROWTH",
     items: [
+      { href: "/business", label: "Business Profile", icon: "🏢" },
       { href: "/leads", label: "Leads & CRM", icon: "🎯" },
       { href: "/intel", label: "Business Intel", icon: "🌐" },
       { href: "/analytics", label: "Analytics", icon: "📈" },

@@ -334,7 +334,17 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
 
     t.state = TaskState.RUNNING
     t.attempts += 1
-    agent = get_agent(t.agent_name)
+    try:
+        agent = get_agent(t.agent_name)
+    except KeyError as exc:
+        # Unknown agent (bad plan/renamed worker): honest failure, no crash.
+        t.state = TaskState.FAILED
+        t.error = f"unknown agent: {t.agent_name}"
+        run_row = _make_run_row(db, wf, t)
+        run_row.error = t.error
+        log.error("task.unknown_agent", workflow_id=wf.id, task_id=t.id,
+                  agent=t.agent_name, error=str(exc))
+        return
     run_row = _make_run_row(db, wf, t)
 
     shared = _seed_shared(list(wf.tasks), t)

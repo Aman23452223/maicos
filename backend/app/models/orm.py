@@ -657,6 +657,28 @@ class BusinessIntelAnalysis(Base):
     )
 
 
+class BusinessMemory(Base):
+    """Workspace-scoped operational memory (facts, prefs, goals context,
+    patterns). Never stores secrets. Never shared across workspaces."""
+
+    __tablename__ = "business_memory"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(60), default="fact", index=True)
+    key: Mapped[str] = mapped_column(String(200), default="", index=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_memory_ws_kind_key", "company_id", "kind", "key"),
+    )
+
+
 class Pipeline(Base):
     __tablename__ = "pipelines"
 
