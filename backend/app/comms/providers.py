@@ -34,7 +34,7 @@ class EmailProvider:
                         "error": res.message or "sendgrid rejected"}
             except Exception as exc:
                 return {"ok": False, "status": "FAILED", "error": str(exc)[:500]}
-        # SMTP fallback if configured
+        # SMTP fallback if configured (Gmail App Password supported).
         if os.environ.get("SMTP_HOST"):
             try:
                 import smtplib
@@ -44,10 +44,24 @@ class EmailProvider:
                 msg["To"] = to
                 msg["Subject"] = subject
                 msg.set_content(body)
-                with smtplib.SMTP(os.environ["SMTP_HOST"],
-                                  int(os.environ.get("SMTP_PORT", "25")),
-                                  timeout=15) as s:
-                    s.send_message(msg)
+                host = os.environ["SMTP_HOST"]
+                port = int(os.environ.get("SMTP_PORT",
+                                          "587" if "gmail" in host else "25"))
+                user = os.environ.get("SMTP_USER") or os.environ.get("SMTP_FROM")
+                password = (os.environ.get("SMTP_PASSWORD")
+                            or os.environ.get("SMTP_APP_PASSWORD", "").replace(" ", ""))
+                if "gmail" in host:
+                    with smtplib.SMTP(host, port, timeout=15) as s:
+                        s.starttls()
+                        if user and password:
+                            s.login(user, password)
+                        s.send_message(msg)
+                else:
+                    with smtplib.SMTP(host, port, timeout=15) as s:
+                        if user and password:
+                            s.starttls()
+                            s.login(user, password)
+                        s.send_message(msg)
                 return {"ok": True, "status": "SENT", "provider": "smtp",
                         "external_id": str(uuid.uuid4())}
             except Exception as exc:

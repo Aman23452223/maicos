@@ -178,6 +178,11 @@ export const api = {
       `/v1/integrations/${provider}/disconnect`,
       { method: "POST" },
     ),
+  configureIntegration: (provider: string, credentials: Record<string, string>) =>
+    request<{ provider: string; saved: boolean; status: string; detail?: string }>(
+      `/v1/integrations/${provider}/configure`,
+      { method: "POST", body: JSON.stringify({ credentials }) },
+    ),
   listWorkspaces: () =>
     request<{ id: string; name: string; role: string; status: string; current: boolean }[]>(
       "/v1/workspaces",

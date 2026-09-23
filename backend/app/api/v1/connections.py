@@ -107,6 +107,16 @@ def disconnect(provider: str, p: Principal = Depends(require_role("admin", "owne
     return {"provider": provider, "status": "disconnected"}
 
 
+# Extra credential fields accepted per provider (allowlisted; env-only).
+EXTRA_FIELDS: dict[str, list[str]] = {
+    "email_smtp": ["SMTP_FROM", "SMTP_USER", "SMTP_PASSWORD", "SMTP_APP_PASSWORD",
+                   "SMTP_PORT", "SMTP_HOST"],
+    "whatsapp": ["WHATSAPP_PHONE_ID"],
+}
+
+SMTP_GMAIL_DEFAULTS = {"SMTP_HOST": "smtp.gmail.com", "SMTP_PORT": "587"}
+
+
 @router.post("/integrations/{provider}/configure")
 def configure(provider: str, payload: ConfigureIn,
               p: Principal = Depends(require_role("admin", "owner")),
@@ -117,12 +127,29 @@ def configure(provider: str, payload: ConfigureIn,
     entry = get_entry(provider)
     if not entry:
         raise HTTPException(status_code=404, detail="unknown provider")
+    allowed = {e.upper() for e in entry["required_envs"]}
+    allowed |= {e.upper() for e in EXTRA_FIELDS.get(provider, [])}
     saved = []
     for k, v in (payload.credentials or {}).items():
         ku = k.strip().upper()
-        if ku in [e.upper() for e in entry["required_envs"]] and v:
-            set_runtime_secret(ku, v)
+        if ku in allowed and v:
+            set_runtime_secret(ku, str(v).strip())
             saved.append(ku)
+    # Gmail SMTP convenience: app password + address imply host/port/user.
+    if provider == "email_smtp":
+        import os
+        if os.environ.get("SMTP_APP_PASSWORD") and os.environ.get("SMTP_FROM"):
+            for k, v in SMTP_GMAIL_DEFAULTS.items():
+                if not os.environ.get(k):
+                    set_runtime_secret(k, v)
+                    saved.append(k)
+            if not os.environ.get("SMTP_USER"):
+                set_runtime_secret("SMTP_USER", os.environ["SMTP_FROM"])
+                saved.append("SMTP_USER")
+            if not os.environ.get("SMTP_PASSWORD") and os.environ.get("SMTP_APP_PASSWORD"):
+                set_runtime_secret("SMTP_PASSWORD",
+                                   os.environ["SMTP_APP_PASSWORD"].replace(" ", ""))
+                saved.append("SMTP_PASSWORD")
     v = verify(provider)
     record(db, company_id=p.workspace_id, actor=p.user_id,
            action="integration.configure", target_type="integration",
