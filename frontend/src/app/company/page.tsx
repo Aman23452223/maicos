@@ -36,8 +36,13 @@ export default function CompanyPage() {
     setBusy(true);
     setMsg(null);
     try {
-      const w = await api.companyRun(objective, true);
-      setMsg(`Workforce dispatched as ${w.id.slice(0, 8)} — review the plan in Approvals, then approve to run.`);
+      const w = (await api.companyRun(objective, true)) as unknown as Record<string, unknown>;
+      const wid = String(w.workflow_id || w.id || "");
+      setMsg(
+        wid
+          ? `Workforce dispatched as ${wid.slice(0, 8)} — review the plan in Approvals, then approve to run.`
+          : `Dispatched (state: ${String(w.state || "unknown")}) — check Approvals.`,
+      );
       setObjective("");
     } catch (e) {
       setMsg((e as Error).message);

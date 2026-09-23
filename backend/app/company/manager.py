@@ -26,6 +26,8 @@ def run_outcome(db: Session, *, principal: Principal, objective: str,
     result = handle_objective(db, principal=principal, objective=objective,
                               conversation_id=conversation_id,
                               plan_review=plan_review)
+    # Alias for clients expecting Workflow shape ({id, ...}).
+    result["id"] = result.get("workflow_id", "")
     plan = result.get("plan", {})
     intent = plan.get("intent", "generic")
     from app.capabilities.registry import enabled_for
