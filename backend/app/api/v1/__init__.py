@@ -4,6 +4,7 @@ from app.api.v1 import (
     approvals,
     auth,
     automation,
+    company,
     connections,
     context,
     growth,
@@ -30,4 +31,5 @@ api_router.include_router(growth.router)
 api_router.include_router(integrations_health.router)
 api_router.include_router(connections.router)
 api_router.include_router(context.router)
+api_router.include_router(company.router)
 

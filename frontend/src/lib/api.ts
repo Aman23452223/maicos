@@ -172,6 +172,31 @@ export const api = {
     }),
   listMemory: () =>
     request<{ id: string; kind: string; key: string; value: string }[]>("/v1/memory"),
+  companyRun: (objective: string, plan_review = true) =>
+    request<Workflow>("/v1/company/run", {
+      method: "POST",
+      body: JSON.stringify({ objective, plan_review }),
+    }),
+  companyCheckup: () =>
+    request<{ signals_created: number; signals: { kind: string; severity: string; title: string; detail: string }[] }>(
+      "/v1/company/checkup",
+      { method: "POST" },
+    ),
+  companySignals: () =>
+    request<{ id: string; kind: string; severity: string; title: string; detail: string; status: string }[]>(
+      "/v1/company/signals",
+    ),
+  companyWorkforce: (intent: string) =>
+    request<{ manager: string; team: { role: string; agent: string; capability: string; available: boolean }[]; missing_capabilities: string[] }>(
+      `/v1/company/workforce?intent=${encodeURIComponent(intent)}`,
+    ),
+  companyBlueprint: (idea: string) =>
+    request<{ idea: string; sections: Record<string, { status: string; text: string }>; notice: string }>(
+      "/v1/company/blueprint",
+      { method: "POST", body: JSON.stringify({ idea }) },
+    ),
+  companyUsage: () =>
+    request<{ type: string; tasks: number; tool_calls: number; note: string }>("/v1/usage"),
   discoverLeads: (query: string, provider = "search", limit = 20) =>
     request<{ status: string; message: string; prospects: Record<string, unknown>[] }>(
       "/v1/leads/discover",

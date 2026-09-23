@@ -218,6 +218,14 @@ def handle_objective(
         target_id=wf.id,
         details={"intent": plan.get("intent")},
     )
+    try:
+        from app.company.events import emit
+
+        emit(db, company_id=principal.workspace_id, type="workflow.completed",
+             payload={"workflow_id": wf.id, "state": wf.state.value,
+                      "intent": plan.get("intent")})
+    except Exception:
+        pass
     db.commit()
     return {
         "workflow_id": wf.id,

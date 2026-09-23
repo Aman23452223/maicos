@@ -166,6 +166,32 @@ def _company_name(objective: str) -> str:
     return "New Client"
 
 
+def _plan_meeting_prep(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "meeting_prep",
+        "tasks": [
+            {"id": "context", "agent": "knowledge", "title": "Gather meeting context",
+             "description": f"Search knowledge for: {objective}",
+             "input": {"query": objective}, "depends_on": []},
+            {"id": "brief", "agent": "analytics", "title": "Prepare brief",
+             "description": "Summarize context + open items for the meeting.",
+             "input": {"action": "summarize_context"}, "depends_on": ["context"]},
+        ],
+    }
+
+
+def _plan_create_project(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "create_project",
+        "tasks": [
+            {"id": "project", "agent": "project_ops", "title": "Create project",
+             "description": objective,
+             "input": {"action": "create_project", "name": objective[:120]},
+             "depends_on": []},
+        ],
+    }
+
+
 def _plan_lead_followup(objective: str) -> dict[str, Any]:
     return {
         "intent": "lead_followup",
@@ -535,6 +561,10 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_onboard_client(objective)
     if intent == "schedule_meeting":
         return _plan_schedule_meeting(objective)
+    if intent == "meeting_prep":
+        return _plan_meeting_prep(objective)
+    if intent == "create_project":
+        return _plan_create_project(objective)
     if intent == "campaign":
         return _plan_campaign(objective)
     if intent == "lead_generation":

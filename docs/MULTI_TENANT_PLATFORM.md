@@ -79,3 +79,28 @@ Legacy DBs also self-repair at boot via `app/db/ensure_schema.py`.
   stuck tasks) shown on Dashboard.
 - Risk: `app/policy/risk.py` (LOW/MED/HIGH; HIGH never auto); rate limit 30
   commands/min/workspace on `POST /commands` (429, in-process).
+
+## Company OS (new)
+
+- Tables: `company_decisions`, `company_signals`, `company_initiatives`,
+  `company_projects`, `company_tasks`, `company_events` (migration `f6a7b8c9d0e1`).
+  `project_ops` agent is now DB-backed (in-memory store removed).
+- Brain: `app/company/brain.py` typed memory (FACT/DECISION/GOAL/ASSUMPTION/
+  USER_PREFERENCE/EXTERNAL_INFORMATION/AI_RECOMMENDATION/EXECUTION_RESULT)
+  + `load_company_context` (profile/goals/memory/metrics).
+- Manager: `app/company/manager.py run_outcome` (context→workforce→plan→
+  execute→verify→measure→remember→report) + `investigate` diagnostics.
+- Workforce: `app/company/workforce.py` composes reusable worker roster from
+  intent + enabled capabilities (no hardcoded extra agents).
+- Blueprint: `generate` (labeled assumptions) + `apply_blueprint` (draft
+  profile/goals/memory only).
+- Software: repo analyze, plan-as-PR (never direct-to-main), Vercel/Railway
+  status, URL smoke test. Full autonomous coding NOT claimed.
+- Checkup: `POST /company/checkup` persists deduped signals.
+- Events: `company_events` bus; emitted on workflow.completed, lead.converted,
+  payment received/failed.
+- Autonomy: `GET /company/autonomy` levels 0-5 + risk map.
+- Usage: `GET /usage` real counts labeled estimate.
+- Frontend: `/company` Command Center (outcome run, workforce, signals,
+  blueprint) in sidebar.
+- meeting_prep/create_project intents now have real plans.

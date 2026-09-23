@@ -18,6 +18,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "OPERATIONS",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: "📊" },
+      { href: "/company", label: "Company OS", icon: "🏭" },
       { href: "/command", label: "AI Command Center", icon: "⚡" },
       { href: "/workflows", label: "Workflows", icon: "🔁" },
       { href: "/approvals", label: "Approvals", icon: "🛡️", badgeKey: "approvals" },

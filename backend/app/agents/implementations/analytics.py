@@ -20,6 +20,16 @@ class AnalyticsAgent:
 
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action", "summarize")
+        if action == "summarize_context":
+            upstream = ctx.shared.get("context") or {}
+            results = upstream.get("results") or []
+            if not results:
+                return AgentResult(error="no upstream context to summarize")
+            top = [str(r.get("snippet", ""))[:300] for r in results[:5]]
+            return AgentResult(output={
+                "query": upstream.get("query", ""),
+                "brief": " | ".join(top)[:2000],
+                "sources": len(results)})
         if action == "summarize_profile":
             # Generic: summarize upstream analyze_site profile (no industry logic).
             upstream = ctx.shared.get("analyze_site") or {}

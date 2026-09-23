@@ -49,4 +49,13 @@ def webhook(db: Session, *, company_id: str, provider: str,
     record(db, company_id=company_id, actor=f"{provider}_webhook",
            action="payment.updated", target_type="payment", target_id=pr.id,
            details={"status": status})
+    try:
+        from app.company.events import emit
+
+        emit(db, company_id=company_id,
+             type="payment.received" if status in ("paid", "captured", "succeeded")
+             else "payment.failed",
+             payload={"payment_id": pr.id, "status": status})
+    except Exception:
+        pass
     return {"ok": True, "status": "OK", "id": pr.id}

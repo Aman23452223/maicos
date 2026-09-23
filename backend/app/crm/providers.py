@@ -172,5 +172,12 @@ def convert_lead_to_contact(db: Session, *, company_id: str, lead_id: str,
     if provider == "internal" and cc.get("id"):
         lead.converted_contact_id = cc["id"]
         db.flush()
+    try:
+        from app.company.events import emit
+
+        emit(db, company_id=company_id, type="lead.converted",
+             payload={"lead_id": lead_id, "contact_id": cc.get("id")})
+    except Exception:
+        pass
     return {"ok": True, "status": "OK", "contact_id": cc.get("id"),
             "company_ref": co.get("id")}
