@@ -35,6 +35,9 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [autoEmail, setAutoEmail] = useState(false);
+  const [autoWhatsapp, setAutoWhatsapp] = useState(false);
+  const [savingSend, setSavingSend] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -43,10 +46,35 @@ export default function SettingsPage() {
       setS(out);
       setProvider(out.llm_provider);
       setModel(out.llm_default_model);
+      try {
+        const bp = await api.getBusinessProfile();
+        const auto = (((bp as unknown as Record<string, unknown>).comms_policy as Record<string, unknown>)?.auto_approve as string[]) || [];
+        setAutoEmail(auto.includes("email"));
+        setAutoWhatsapp(auto.includes("whatsapp"));
+      } catch {
+        /* profile optional */
+      }
     } catch (e) {
       setErr((e as Error).message);
     }
   }, [user]);
+
+  async function handleSaveSending() {
+    setSavingSend(true);
+    setMsg(null);
+    setErr(null);
+    try {
+      const auto_approve: string[] = [];
+      if (autoEmail) auto_approve.push("email");
+      if (autoWhatsapp) auto_approve.push("whatsapp");
+      await api.updateBusinessProfile({ comms_policy: { auto_approve } } as Record<string, unknown>);
+      setMsg("Sending mode saved.");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSavingSend(false);
+    }
+  }
 
   useEffect(() => {
     if (user) refresh();
@@ -226,6 +254,30 @@ export default function SettingsPage() {
               {err}
             </div>
           )}
+
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+            <div className="text-xs font-semibold text-ink">📨 Sending Mode (one-shot commands)</div>
+            <p className="text-[11px] text-muted">
+              Default: har external send approval mangta hai. Auto-send ON karne pe Command Center
+              turant bhej dega — sirf connected channels ke liye.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-ink">
+              <input type="checkbox" checked={autoEmail} onChange={(e) => setAutoEmail(e.target.checked)} />
+              Email auto-send (no approval)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink">
+              <input type="checkbox" checked={autoWhatsapp} onChange={(e) => setAutoWhatsapp(e.target.checked)} />
+              WhatsApp auto-send (no approval)
+            </label>
+            <button
+              type="button"
+              onClick={handleSaveSending}
+              disabled={savingSend}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-ink border border-white/10 text-xs font-medium disabled:opacity-50"
+            >
+              {savingSend ? "Saving…" : "Save Sending Mode"}
+            </button>
+          </div>
 
           <div className="flex items-center gap-3 pt-2">
             <button

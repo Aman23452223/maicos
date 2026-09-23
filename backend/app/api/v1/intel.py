@@ -28,6 +28,7 @@ class BusinessConfigIn(BaseModel):
     icp: dict | None = None
     scoring_rules: dict | None = None
     followup_policy: dict | None = None
+    comms_policy: dict | None = None
 
 
 @router.post("/intel/analyze-website")
@@ -79,6 +80,7 @@ def get_profile(p: Principal = Depends(get_current_principal),
             "description": bp.description, "target_customer": bp.target_customer,
             "geography": bp.geography, "icp": bp.icp or {},
             "scoring_rules": bp.scoring_rules or {},
+            "comms_policy": bp.comms_policy or {},
             "website_url": bp.website_url, "profile": bp.profile_json or {}}
 
 
@@ -91,7 +93,7 @@ def put_profile(payload: BusinessConfigIn,
     for k in ("business_name", "industry", "description", "target_customer", "geography"):
         if k in data:
             setattr(bp, k, str(data[k])[:2000])
-    for k in ("icp", "scoring_rules", "followup_policy"):
+    for k in ("icp", "scoring_rules", "followup_policy", "comms_policy"):
         if k in data and isinstance(data[k], dict):
             setattr(bp, k, data[k])
     db.commit()

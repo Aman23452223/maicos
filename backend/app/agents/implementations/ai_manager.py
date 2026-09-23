@@ -25,7 +25,10 @@ INTENTS = {
         "restaurant", "nagpur",
     ],
     "website_analysis": ["analyze website", "website", "target customer", "services"],
-    "integration_request": ["zomato", "whatsapp", "google sheets", "instagram",
+    "direct_send": ["send email", "send message", "send whatsapp", "email bhej",
+                    "message bhej", "msg bhej", "mail kar", "whatsapp kar",
+                    "email kar", "story dal", "post dal", "post kar"],
+    "integration_request": ["zomato", "google sheets", "instagram",
                             "order summary", "today's orders", "menu availability"],
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
     "weekly_review": ["weekly", "report", "pipeline", "analytics", "stuck"],
@@ -295,6 +298,58 @@ def _plan_integration_request(objective: str) -> dict[str, Any]:
     }
 
 
+def _plan_direct_send(objective: str) -> dict[str, Any]:
+    """One-shot send: parse channel + recipient + content (generic)."""
+    import re
+
+    low = objective.lower()
+    if any(k in low for k in ("story", "post dal", "post kar")):
+        channel = "unsupported"
+    elif "whatsapp" in low or "msg bhej" in low or "message bhej" in low:
+        channel = "whatsapp"
+    else:
+        channel = "email"
+    email_m = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", objective)
+    phone_m = re.search(r"\+?\d[\d\s\-()]{7,}\d", objective)
+    to = ""
+    if channel == "email" and email_m:
+        to = email_m.group(0)
+    elif channel == "whatsapp" and phone_m:
+        to = re.sub(r"[\s\-()]", "", phone_m.group(0))
+    elif email_m:
+        to = email_m.group(0)
+    # Content: strip the command + recipient, keep the message.
+    body = re.sub(r"(?i)^.*?(bhej|kar|dal|send|post)\b", "", objective).strip()
+    body = re.sub(r"[\w.+-]+@[\w-]+\.[\w.-]+", "", body).strip(" -:,")
+    subject_m = re.search(r"(?i)subject\s*[:\-]\s*(.+)", objective)
+    subject = subject_m.group(1).strip()[:200] if subject_m else "Message from MAICOS"
+    if channel == "unsupported":
+        return {
+            "intent": "direct_send",
+            "tasks": [{
+                "id": "unsupported",
+                "agent": "communication",
+                "title": "Unsupported channel",
+                "description": objective,
+                "input": {"action": "send", "channel": "story",
+                          "to": to, "subject": subject, "body": body},
+                "depends_on": [],
+            }],
+        }
+    return {
+        "intent": "direct_send",
+        "tasks": [{
+            "id": "send",
+            "agent": "communication",
+            "title": f"Send {channel}",
+            "description": objective,
+            "input": {"action": "send", "channel": channel, "to": to,
+                      "subject": subject, "body": body or objective},
+            "depends_on": [],
+        }],
+    }
+
+
 def _plan_lead_outreach(objective: str) -> dict[str, Any]:
     from app.workflow.templates import lead_outreach
 
@@ -320,6 +375,8 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_website_analysis(objective)
     if intent == "integration_request":
         return _plan_integration_request(objective)
+    if intent == "direct_send":
+        return _plan_direct_send(objective)
     if intent == "lead_outreach":
         return _plan_lead_outreach(objective)
     if intent == "weekly_review":

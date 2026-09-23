@@ -26,7 +26,12 @@ def _smtp_host() -> str | None:
 
 
 def _smtp_port() -> int:
-    return int(os.environ.get("SMTP_PORT", "1025"))
+    host = _smtp_host() or ""
+    default = "587" if "gmail" in host else "1025"
+    try:
+        return int(os.environ.get("SMTP_PORT", default))
+    except ValueError:
+        return int(default)
 
 
 def _smtp_from() -> str:
@@ -38,9 +43,23 @@ def _deliver_smtp(message: EmailMessage) -> str | None:
     if not host:
         return None
     try:
-        with smtplib.SMTP(host, _smtp_port(), timeout=5) as s:
-            s.send_message(message)
-        return f"smtp:{host}:{_smtp_port()}"
+        port = _smtp_port()
+        user = os.environ.get("SMTP_USER") or os.environ.get("SMTP_FROM")
+        password = (os.environ.get("SMTP_PASSWORD")
+                    or os.environ.get("SMTP_APP_PASSWORD", "").replace(" ", ""))
+        if "gmail" in host:
+            with smtplib.SMTP(host, port or 587, timeout=10) as s:
+                s.starttls()
+                if user and password:
+                    s.login(user, password)
+                s.send_message(message)
+        else:
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                if user and password:
+                    s.starttls()
+                    s.login(user, password)
+                s.send_message(message)
+        return f"smtp:{host}:{port}"
     except Exception as e:  # noqa: BLE001
         return f"smtp-error: {e}"
 
@@ -87,6 +106,16 @@ class EmailConnector:
                 rec["transport"] = delivered
                 _OUTBOX.put(mid, rec)
                 transport = delivered
+                if transport.startswith("smtp-error"):
+                    # SMTP configured but delivery failed: honest failure,
+                    # never fake SENT. (No-SMTP path keeps legacy outbox SENT
+                    # for backward compat with the proof/tests.)
+                    return ToolResult(
+                        ok=False,
+                        confirmed=False,
+                        data=rec,
+                        message=f"smtp delivery failed: {transport}",
+                    )
             return ToolResult(
                 ok=True,
                 confirmed=True,

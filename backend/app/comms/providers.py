@@ -76,9 +76,39 @@ class MessagingProvider:
     name = "messaging"
 
     def send(self, *, to: str, body: str, channel: str = "whatsapp") -> dict:
-        if channel == "whatsapp" and os.environ.get("WHATSAPP_TOKEN"):
+        if channel == "whatsapp":
+            token = os.environ.get("WHATSAPP_TOKEN", "")
+            phone_id = os.environ.get("WHATSAPP_PHONE_ID", "")
+            if not token or not phone_id:
+                return _not_configured(
+                    "whatsapp", "WHATSAPP_TOKEN/WHATSAPP_PHONE_ID not configured. "
+                                "Message not sent.")
+            try:
+                import httpx
+                r = httpx.post(
+                    f"https://graph.facebook.com/v19.0/{phone_id}/messages",
+                    headers={"Authorization": f"Bearer {token}",
+                             "Content-Type": "application/json"},
+                    json={"messaging_product": "whatsapp", "to": to,
+                          "type": "text", "text": {"body": body[:4000]}},
+                    timeout=20.0)
+            except Exception as exc:
+                return {"ok": False, "status": "FAILED",
+                        "error": f"whatsapp request failed: {exc}"[:300]}
+            if r.status_code in (401, 403):
+                return {"ok": False, "status": "INVALID_CONFIGURATION",
+                        "error": "whatsapp token rejected (401/403)"}
+            try:
+                data = r.json()
+            except Exception:
+                return {"ok": False, "status": "PROVIDER_ERROR",
+                        "error": "whatsapp returned non-JSON"}
+            msgs = data.get("messages") or []
+            if r.status_code == 200 and msgs:
+                return {"ok": True, "status": "SENT", "provider": "whatsapp",
+                        "external_id": str(msgs[0].get("id", ""))}
             return {"ok": False, "status": "FAILED",
-                    "error": "whatsapp provider skeleton only; wire Meta/Twilio API here"}
+                    "error": str(data.get("error", data))[:500]}
         return _not_configured(
             channel, f"{channel} provider not configured. Message not sent.")
 
