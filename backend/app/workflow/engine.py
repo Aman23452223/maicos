@@ -287,6 +287,33 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
     # directly so the agent's "needs_approval" output does not
     # re-trigger an approval request.
     pending_approval = _consume_approved_approval(db, t)
+    if pending_approval is not None and pending_approval.get("action") == "input_required":
+        # Clarification answered: merge the user's answer (decision note)
+        # into task input and rerun the agent fresh (no replay).
+        from app.models.orm import Approval as _Approval
+        from app.models.orm import ApprovalStatus as _ApprovalStatus
+
+        latest = (
+            db.query(_Approval)
+            .filter(_Approval.task_id == t.id,
+                    _Approval.status == _ApprovalStatus.APPROVED)
+            .order_by(_Approval.created_at.desc())
+            .first()
+        )
+        if latest is not None and (t.input or {}).get("_input_consumed") == latest.id:
+            # Answer already merged on a previous pass; run normally.
+            pending_approval = None
+        else:
+            answer = (latest.decision_note or "") if latest else ""
+            field = str((pending_approval.get("payload") or {}).get("_field", "_answer"))
+            merged = dict(t.input or {})
+            merged[field] = answer
+            merged["_answer"] = answer
+            merged["_input_consumed"] = latest.id if latest else ""
+            t.input = merged
+            t.state = TaskState.PENDING
+            # fall through to normal execution below
+            pending_approval = None
     if pending_approval is not None:
         t.state = TaskState.RUNNING
         t.attempts += 1
@@ -366,6 +393,28 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
 
     run_row.steps = ctx.log
     run_row.tool_calls = ctx.log
+
+    if result.needs_input:
+        # Agent asks a clarifying question (like I ask you). Pause with an
+        # input_required approval; the answer comes back as decision note.
+        payload = {
+            "_operation": "input.answer",
+            "_field": str(result.needs_input.get("field", "_answer")),
+            "_task_input": dict(t.input or {}),
+        }
+        create_approval(
+            db,
+            workflow=wf,
+            task_id=t.id,
+            requested_by_agent=t.agent_name,
+            action="input_required",
+            target_system="user",
+            description=str(result.needs_input.get("question", "More information needed")),
+            payload=payload,
+        )
+        t.state = TaskState.WAITING_APPROVAL
+        t.output = result.output or {}
+        return
 
     if result.needs_approval:
         # Older plans may not have set `_operation`; fall back to the

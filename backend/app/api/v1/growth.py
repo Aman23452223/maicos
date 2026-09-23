@@ -1,7 +1,7 @@
 """Leads/CRM/followups/proposals/analytics routes (Phases 3-20)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -87,6 +87,33 @@ def import_leads(payload: ImportIn, p: Principal = Depends(get_current_principal
             qualify_lead(db, company_id=p.workspace_id, lead_id=lid, actor=p.user_id)
     db.commit()
     return out
+
+
+@router.post("/leads/import-csv")
+async def import_csv(file: UploadFile = File(...), list_name: str = "",
+                     p: Principal = Depends(get_current_principal),
+                     db: Session = Depends(get_db)):
+    """Upload a contact sheet (CSV). Columns: company_name/name, email,
+    phone, location, industry, website, notes. Tagged source=list:<name>."""
+    from app.leads.providers import CsvImportProvider
+
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8-sig")
+    except Exception:
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 text")
+    prospects = CsvImportProvider().parse(content)
+    if not prospects:
+        raise HTTPException(status_code=422, detail="no rows parsed")
+    tag = f"list:{list_name.strip()}" if list_name.strip() else "csv_import"
+    for pr in prospects:
+        pr.source = tag
+    out = import_prospects(db, company_id=p.workspace_id, prospects=prospects,
+                           actor=p.user_id)
+    for lid in out.get("ids", []):
+        qualify_lead(db, company_id=p.workspace_id, lead_id=lid, actor=p.user_id)
+    db.commit()
+    return {**out, "source": tag}
 
 
 @router.get("/leads")

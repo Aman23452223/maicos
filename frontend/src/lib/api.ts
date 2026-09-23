@@ -29,6 +29,20 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const auth = await getAuthHeader();
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { ...auth },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status}: ${body}`);
+  }
+  return (await res.json()) as T;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const auth = await getAuthHeader();
   const res = await fetch(`/api${path}`, {
@@ -134,6 +148,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ prospects, auto_qualify }),
     }),
+  importCsv: (file: File, list_name = "") => {
+    const form = new FormData();
+    form.append("file", file);
+    if (list_name) form.append("list_name", list_name);
+    return requestForm<{ created: number; deduped: number; ids: string[]; source: string }>(
+      "/v1/leads/import-csv",
+      form,
+    );
+  },
+  uploadDocument: (file: File) => {
+    const form = new FormData();
+    form.append("name", file.name);
+    form.append("mime_type", file.type || "text/plain");
+    form.append("file", file);
+    return requestForm<{ id: string; name: string; indexed: boolean }>(
+      "/v1/documents",
+      form,
+    );
+  },
   listLeads: (status?: string) =>
     request<Lead[]>(`/v1/leads${status ? `?status=${status}` : ""}`),
   qualifyLead: (id: string) =>

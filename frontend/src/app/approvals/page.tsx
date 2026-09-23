@@ -12,6 +12,30 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  async function handleAnswer(id: string) {
+    const note = (answers[id] || "").trim();
+    if (!note) {
+      setErr("Pehle jawab likho, phir Send dabao.");
+      return;
+    }
+    setDecidingId(id);
+    setErr(null);
+    try {
+      await api.decide(id, "APPROVE", note);
+      setAnswers((a) => {
+        const n = { ...a };
+        delete n[id];
+        return n;
+      });
+      await refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setDecidingId(null);
+    }
+  }
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -221,9 +245,42 @@ export default function ApprovalsPage() {
                   </div>
                 </div>
 
+                {/* Clarification question from agent */}
+                {a.action === "input_required" && (
+                  <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 space-y-2">
+                    <div className="text-xs text-ink font-medium">❓ Agent puch raha hai — jawab do, kaam aage badhega:</div>
+                    {isPending ? (
+                      <div className="flex gap-2">
+                        <input
+                          value={answers[a.id] || ""}
+                          onChange={(e) => setAnswers({ ...answers, [a.id]: e.target.value })}
+                          placeholder="Yaha jawab likho…"
+                          className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink"
+                        />
+                        <button
+                          onClick={() => handleAnswer(a.id)}
+                          disabled={isDeciding}
+                          className="px-4 py-2 rounded-lg bg-accent text-bg font-semibold text-xs disabled:opacity-50"
+                        >
+                          {isDeciding ? "Sending…" : "Send Answer"}
+                        </button>
+                        <button
+                          onClick={() => handleDecision(a.id, "REJECT")}
+                          disabled={isDeciding}
+                          className="px-3 py-2 rounded-lg text-bad text-xs hover:underline disabled:opacity-50"
+                        >
+                          Cancel task
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted">Resolved</div>
+                    )}
+                  </div>
+                )}
+
                 {/* Decision Actions */}
                 <div className="flex items-center gap-2 self-end md:self-center flex-shrink-0">
-                  {isPending ? (
+                  {isPending && a.action !== "input_required" ? (
                     <>
                       <button
                         onClick={() => handleDecision(a.id, "APPROVE")}

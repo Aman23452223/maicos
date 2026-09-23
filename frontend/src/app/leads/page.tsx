@@ -12,6 +12,21 @@ export default function LeadsPage() {
   const [busy, setBusy] = useState(false);
   const [prospects, setProspects] = useState<Record<string, unknown>[]>([]);
   const [importing, setImporting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleCsv(f: File) {
+    setUploading(true);
+    setMsg(null);
+    try {
+      const r = await api.importCsv(f, f.name.replace(/\.csv$/i, ""));
+      setMsg(`Sheet upload: ${r.created} new, ${r.deduped} duplicate (${r.source}).`);
+      load();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function load() {
     try {
@@ -80,7 +95,28 @@ export default function LeadsPage() {
       </div>
 
       <div className="p-5 rounded-2xl bg-[#0e1217] border border-white/[0.08] space-y-3">
-        <div className="text-xs font-semibold text-ink">🔍 Lead Discovery</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold text-ink">📤 Contact Sheet Upload (CSV)</div>
+          <label className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs cursor-pointer hover:bg-white/10">
+            {uploading ? "Uploading…" : "Upload CSV"}
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleCsv(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <div className="text-[11px] text-muted">
+          Columns: company_name, email, phone, location, industry, website, notes. Upload once — phir
+          Command Center se bolo “sabko bhejo”, poori sheet ko jayega.
+        </div>
+        <div className="text-xs font-semibold text-ink pt-1">🔍 Lead Discovery</div>
         <div className="flex gap-2">
           <input
             value={query}

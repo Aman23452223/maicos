@@ -28,6 +28,8 @@ INTENTS = {
     "direct_send": ["send email", "send message", "send whatsapp", "email bhej",
                     "message bhej", "msg bhej", "mail kar", "whatsapp kar",
                     "email kar", "story dal", "post dal", "post kar"],
+    "bulk_send": ["send to all", "sabko", "all clients", "bulk", "sheet",
+                  "everyone", "entire list", "puri sheet", "sare clients"],
     "integration_request": ["zomato", "google sheets", "instagram",
                             "order summary", "today's orders", "menu availability"],
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
@@ -303,6 +305,9 @@ def _plan_direct_send(objective: str) -> dict[str, Any]:
     import re
 
     low = objective.lower()
+    if any(k in low for k in ("all", "sabko", "every", "sheet", "everyone",
+                              "sare clients", "entire list")):
+        return _plan_bulk_send(objective)
     if any(k in low for k in ("story", "post dal", "post kar")):
         channel = "unsupported"
     elif "whatsapp" in low or "msg bhej" in low or "message bhej" in low:
@@ -350,6 +355,30 @@ def _plan_direct_send(objective: str) -> dict[str, Any]:
     }
 
 
+def _plan_bulk_send(objective: str) -> dict[str, Any]:
+    """One task: bulk send to sheet/named contacts (agent resolves)."""
+    low = objective.lower()
+    channel = "whatsapp" if ("whatsapp" in low or "msg" in low) else "email"
+    import re
+
+    subject_m = re.search(r"(?i)subject\s*[:\-]\s*(.+)", objective)
+    return {
+        "intent": "bulk_send",
+        "tasks": [{
+            "id": "bulk",
+            "agent": "communication",
+            "title": f"Bulk {channel} send",
+            "description": objective,
+            "input": {"action": "bulk_send", "channel": channel,
+                      "bulk_query": objective,
+                      "subject": (subject_m.group(1).strip()[:200]
+                                  if subject_m else "Message from MAICOS"),
+                      "body": objective},
+            "depends_on": [],
+        }],
+    }
+
+
 def _plan_lead_outreach(objective: str) -> dict[str, Any]:
     from app.workflow.templates import lead_outreach
 
@@ -377,6 +406,8 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_integration_request(objective)
     if intent == "direct_send":
         return _plan_direct_send(objective)
+    if intent == "bulk_send":
+        return _plan_bulk_send(objective)
     if intent == "lead_outreach":
         return _plan_lead_outreach(objective)
     if intent == "weekly_review":

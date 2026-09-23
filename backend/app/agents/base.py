@@ -38,6 +38,12 @@ class AgentContext:
 class AgentResult:
     output: dict[str, Any] = field(default_factory=dict)
     needs_approval: dict[str, Any] | None = None
+    # needs_input: agent is blocked on a missing piece of information.
+    # Shape: {"question": str, "field": str} — engine pauses the task with
+    # an input_required approval; the user's answer (decision note) is fed
+    # back into task input and the agent reruns. Like me asking you a
+    # clarifying question instead of failing.
+    needs_input: dict[str, Any] | None = None
     error: str | None = None
 
 

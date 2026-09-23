@@ -24,6 +24,24 @@ export default function CommandPage() {
   const [tasks, setTasks] = useState<WorkflowTask[]>([]);
   const [scheduleAt, setScheduleAt] = useState("");
   const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
+  const [attached, setAttached] = useState<string[]>([]);
+  const [attaching, setAttaching] = useState(false);
+
+  async function handleAttach(f: File) {
+    if (!user) {
+      openAuthModal("signin");
+      return;
+    }
+    setAttaching(true);
+    try {
+      const doc = await api.uploadDocument(f);
+      setAttached((a) => [...a, doc.name]);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAttaching(false);
+    }
+  }
 
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -37,7 +55,11 @@ export default function CommandPage() {
     setBusy(true);
     setErr(null);
     try {
-      const w = await api.submitCommand(objective);
+      const full =
+        attached.length > 0
+          ? `${objective}\n[Attached knowledge: ${attached.join(", ")} — search the Knowledge Vault for it.]`
+          : objective;
+      const w = await api.submitCommand(full);
       setWf(w);
       const ts = await api.listTasks(w.id);
       setTasks(ts);
@@ -117,6 +139,37 @@ export default function CommandPage() {
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
             />
+
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <label className="text-[11px] px-2.5 py-1.5 rounded-md bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 text-muted hover:text-ink cursor-pointer transition-all">
+                {attaching ? "Uploading…" : "📎 Attach plan (PDF/DOCX/TXT)"}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,.csv"
+                  className="hidden"
+                  disabled={attaching}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleAttach(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {attached.map((n) => (
+                <span
+                  key={n}
+                  className="text-[11px] px-2 py-1 rounded-md bg-accent/10 border border-accent/20 text-ink flex items-center gap-1.5"
+                >
+                  📄 {n}
+                  <button
+                    onClick={() => setAttached((a) => a.filter((x) => x !== n))}
+                    className="text-muted hover:text-bad"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
 
             {/* Quick Prompts */}
             <div className="mt-3">
