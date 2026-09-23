@@ -96,7 +96,7 @@ class SalesCRMAgent:
             )
         if action in ("discover", "enrich", "deduplicate", "qualify", "score",
                       "crm", "select_qualified", "schedule_followups", "convert",
-                      "import", "report"):
+                      "import", "report", "qualify_batch"):
             try:
                 return self._lifecycle(task, ctx)
             except ValueError as exc:
@@ -123,9 +123,45 @@ class SalesCRMAgent:
                 return AgentResult(error=f"unknown provider: {provider}")
             res = p.discover(str(task.input.get("objective") or task.description or ""),
                              limit=int(task.input.get("limit", 20)))
-            # Never fake: surface NOT_CONFIGURED honestly
-            return AgentResult(output={"status": res.status, "message": res.message,
-                                       "count": len(res.prospects)})
+            if not res.ok:
+                # Never fake: surface NOT_CONFIGURED honestly
+                return AgentResult(output={"status": res.status, "message": res.message,
+                                           "count": 0})
+            out = {"status": res.status, "message": res.message,
+                   "count": len(res.prospects)}
+            if task.input.get("auto_import"):
+                imp = import_prospects(ctx.db, company_id=ws,
+                                       prospects=res.prospects, actor="sales_crm")
+                ctx.db.commit()
+                out["imported"] = imp
+            else:
+                out["prospects"] = [vars(x) for x in res.prospects[:20]]
+            return AgentResult(output=out)
+        if action == "qualify_batch":
+            # Enrich (website -> email) then qualify every NEW lead.
+            from app.models.orm import Lead, LeadStatus
+
+            new_leads = ctx.db.query(Lead).filter(
+                Lead.company_id == ws, Lead.status == LeadStatus.NEW).limit(50).all()
+            if not new_leads:
+                return AgentResult(output={"qualified": 0, "message": "no NEW leads to qualify"})
+            done = 0
+            for lead in new_leads[:10]:
+                if lead.website:
+                    try:
+                        enrich_lead(ctx.db, company_id=ws, lead_id=lead.id,
+                                    actor="sales_crm")
+                    except Exception:
+                        pass
+            for lead in new_leads:
+                try:
+                    qualify_lead(ctx.db, company_id=ws, lead_id=lead.id,
+                                 actor="sales_crm")
+                    done += 1
+                except Exception:
+                    continue
+            ctx.db.commit()
+            return AgentResult(output={"qualified": done})
         if action == "import":
             raw = task.input.get("prospects") or []
             prospects = [Prospect(**r) if isinstance(r, dict) else r for r in raw]

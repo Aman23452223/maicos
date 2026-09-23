@@ -43,6 +43,24 @@ class CalendarAgent:
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action", "schedule")
         if action == "schedule":
+            if not task.input.get("start") and task.input.get("_answer"):
+                # User answered the date question — parse it, don't guess.
+                from app.agents.implementations.ai_manager import (
+                    _parse_meeting_datetime,
+                )
+
+                parsed = _parse_meeting_datetime(str(task.input["_answer"]))
+                if parsed:
+                    task.input["start"] = parsed
+            if not task.input.get("start") and task.input.get("needs_date"):
+                return AgentResult(
+                    needs_input={
+                        "question": ("Meeting kab rakhu? Date aur time batao "
+                                     "(jaise: kal 3pm, Monday 10am)."),
+                        "field": "_answer",
+                    },
+                    output={"title": task.input.get("title", "Meeting")},
+                )
             availability = call_tool(ctx, "calendar", "availability.find", {})
             suggested = (availability.get("data") or {}).get("suggested") or [None]
             start = task.input.get("start") or suggested[0]

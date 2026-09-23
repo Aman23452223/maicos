@@ -62,12 +62,21 @@ def decide_approval(
         decided_by_user_id=p.user_id,
         note=payload.note,
     )
+    if a.action == "plan_review" and payload.decision.upper() != "APPROVE":
+        # Rejected plan never executes.
+        from app.models.orm import Workflow as _Workflow0
+        from app.models.orm import WorkflowState as _WS
+
+        wf0 = db.get(_Workflow0, a.workflow_id)
+        if wf0 is not None:
+            wf0.state = _WS.CANCELLED
     db.commit()
     # Auto-resume: on APPROVE, if no other PENDING approvals remain for the
     # workflow, continue execution immediately (Phase 16). Safe because the
     # engine replays only the approved payload and checks confirmations.
     try:
-        from app.models.orm import TaskState, Workflow
+        from app.models.orm import TaskState
+        from app.models.orm import Workflow as _Workflow
 
         if payload.decision.upper() == "APPROVE":
             remaining = (
@@ -82,7 +91,7 @@ def decide_approval(
                 from app.models.orm import Task
                 from app.workflow.engine import run as run_workflow
 
-                wf = db.get(Workflow, a.workflow_id)
+                wf = db.get(_Workflow, a.workflow_id)
                 if wf is not None:
                     blocked = (
                         db.query(Task)

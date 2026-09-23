@@ -16,6 +16,9 @@ from app.llm.gateway import LLMRequest, get_llm
 
 INTENTS = {
     "onboard_client": ["onboard", "new client", "new customer"],
+    "schedule_meeting": ["schedule meeting", "meeting with", "meeting kar",
+                         "schedule a call", "book a meeting", "appointment",
+                         "schedule call"],
     "meeting_prep": ["prepare", "meeting", "brief"],
     "create_project": ["launch", "create project", "new project"],
     "invoice_followup": ["overdue", "invoice", "payment reminder", "receivable"],
@@ -30,6 +33,8 @@ INTENTS = {
                     "email kar", "story dal", "post dal", "post kar"],
     "bulk_send": ["send to all", "sabko", "all clients", "bulk", "sheet",
                   "everyone", "entire list", "puri sheet", "sare clients"],
+    "campaign": ["campaign", "festival", "diwali", "offer launch", "promotion",
+                 "promote", "influencer", "sale event", "launch offer"],
     "integration_request": ["zomato", "google sheets", "instagram",
                             "order summary", "today's orders", "menu availability"],
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
@@ -379,6 +384,136 @@ def _plan_bulk_send(objective: str) -> dict[str, Any]:
     }
 
 
+def _parse_meeting_datetime(objective: str) -> str | None:
+    """Best-effort natural datetime -> ISO. Returns None when unclear
+    (caller should ask via needs_input instead of guessing)."""
+    from datetime import datetime, timedelta
+
+    low = objective.lower()
+    now = datetime.now()
+    day = None
+    if "day after tomorrow" in low:
+        day = (now + timedelta(days=2)).date()
+    elif "tomorrow" in low or "kal" in low:
+        day = (now + timedelta(days=1)).date()
+    elif "today" in low or "aaj" in low:
+        day = now.date()
+    else:
+        weekdays = ["monday", "tuesday", "wednesday", "thursday",
+                    "friday", "saturday", "sunday"]
+        for i, wd in enumerate(weekdays):
+            if wd in low:
+                delta = (i - now.weekday()) % 7 or 7
+                day = (now + timedelta(days=delta)).date()
+                break
+        if day is None:
+            import re
+
+            m = re.search(r"(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?", low)
+            if m:
+                d, mo = int(m.group(1)), int(m.group(2))
+                y = int(m.group(3)) if m.group(3) else now.year
+                if y < 100:
+                    y += 2000
+                try:
+                    from datetime import date
+
+                    day = date(y, mo, d)
+                except ValueError:
+                    return None
+    if day is None:
+        return None
+    import re
+
+    m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", low)
+    hour, minute = 10, 0
+    if m:
+        hour = int(m.group(1))
+        minute = int(m.group(2) or 0)
+        mer = m.group(3)
+        if mer == "pm" and hour < 12:
+            hour += 12
+        if mer == "am" and hour == 12:
+            hour = 0
+    elif "morning" in low:
+        hour = 10
+    elif "afternoon" in low:
+        hour = 14
+    elif "evening" in low:
+        hour = 18
+    try:
+        return datetime(day.year, day.month, day.day, hour, minute).isoformat()
+    except ValueError:
+        return None
+
+
+def _plan_schedule_meeting(objective: str) -> dict[str, Any]:
+    import re
+
+    emails = re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", objective)
+    title_m = re.search(r"(?i)meeting\s+(?:with\s+)?([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+){0,2})",
+                        objective)
+    title = f"Meeting with {title_m.group(1)}" if title_m else "Meeting"
+    start = _parse_meeting_datetime(objective)
+    task_input: dict[str, Any] = {"action": "schedule", "title": title,
+                                  "attendees": emails}
+    if start:
+        task_input["start"] = start
+    else:
+        # Don't guess the date — the agent will ask via needs_input.
+        task_input["needs_date"] = True
+    return {
+        "intent": "schedule_meeting",
+        "tasks": [{
+            "id": "meeting",
+            "agent": "calendar",
+            "title": title,
+            "description": objective,
+            "input": task_input,
+            "depends_on": [],
+        }],
+    }
+
+
+def _plan_campaign(objective: str) -> dict[str, Any]:
+    """Festival/promo campaign: discover -> qualify -> outreach -> follow-up -> report."""
+    return {
+        "intent": "campaign",
+        "tasks": [
+            {"id": "discover", "agent": "sales_crm", "title": "Discover prospects",
+             "description": f"Find prospects matching: {objective}",
+             "input": {"action": "discover", "objective": objective,
+                       "auto_import": True, "limit": 15},
+             "depends_on": []},
+            {"id": "qualify", "agent": "sales_crm", "title": "Enrich + qualify",
+             "description": "Enrich and score discovered prospects.",
+             "input": {"action": "qualify_batch", "objective": objective},
+             "depends_on": ["discover"]},
+            {"id": "outreach", "agent": "communication",
+             "title": "Draft campaign outreach",
+             "description": f"Personalized campaign message for: {objective}",
+             "input": {"action": "draft", "subject": "Special offer",
+                       "body": objective},
+             "depends_on": ["qualify"]},
+            {"id": "send", "agent": "communication", "title": "Send campaign",
+             "description": "Approval-gated bulk send to qualified prospects.",
+             "input": {"action": "bulk_send", "channel": "email",
+                       "bulk_query": objective, "subject": "Special offer",
+                       "body": objective},
+             "depends_on": ["outreach"]},
+            {"id": "followups", "agent": "sales_crm",
+             "title": "Schedule follow-ups",
+             "description": "Follow-up sequence for campaign contacts.",
+             "input": {"action": "schedule_followups"},
+             "depends_on": ["send"]},
+            {"id": "report", "agent": "analytics", "title": "Campaign report",
+             "description": "Funnel + results for the campaign.",
+             "input": {"action": "report"},
+             "depends_on": ["followups"]},
+        ],
+    }
+
+
 def _plan_lead_outreach(objective: str) -> dict[str, Any]:
     from app.workflow.templates import lead_outreach
 
@@ -398,6 +533,10 @@ def build_plan(objective: str) -> dict[str, Any]:
     intent = classify(objective)
     if intent == "onboard_client":
         return _plan_onboard_client(objective)
+    if intent == "schedule_meeting":
+        return _plan_schedule_meeting(objective)
+    if intent == "campaign":
+        return _plan_campaign(objective)
     if intent == "lead_generation":
         return _plan_lead_generation(objective)
     if intent == "website_analysis":

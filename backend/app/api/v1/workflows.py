@@ -14,7 +14,7 @@ from app.models.orm import (
     WorkflowState,
 )
 from app.orchestrator import handle_objective
-from app.schemas import CommandIn, TaskOut, WorkflowOut
+from app.schemas import CommandIn, TaskOut, TaskPatchIn, WorkflowOut
 from app.workflow.engine import run as run_workflow
 
 router = APIRouter(tags=["workflow"])
@@ -33,7 +33,8 @@ def submit_command(
         db.flush()
         conv_id = conv.id
     result = handle_objective(
-        db, principal=p, objective=payload.objective, conversation_id=conv_id
+        db, principal=p, objective=payload.objective, conversation_id=conv_id,
+        plan_review=bool(payload.plan_review),
     )
     wf = db.get(Workflow, result["workflow_id"])
     if not wf:
@@ -151,6 +152,53 @@ def list_tasks(
     ]
 
 
+@router.patch("/workflows/{workflow_id}/tasks/{task_id}", response_model=TaskOut)
+def patch_task(
+    workflow_id: str,
+    task_id: str,
+    payload: TaskPatchIn,
+    p: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+) -> TaskOut:
+    """Edit a pending task's plan (title/description/input) before it runs.
+
+    Allowed only while the task hasn't executed (PENDING) and the workflow
+    isn't actively running to completion — i.e. the plan-review window.
+    """
+    from app.models.orm import Task
+
+    wf = db.get(Workflow, workflow_id)
+    if not wf or wf.company_id != p.workspace_id:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    if wf.state not in {WorkflowState.WAITING_APPROVAL, WorkflowState.PLANNED,
+                        WorkflowState.PARTIAL}:
+        raise HTTPException(status_code=409,
+                            detail=f"cannot edit tasks in {wf.state.value}")
+    t = db.get(Task, task_id)
+    if not t or t.workflow_id != wf.id:
+        raise HTTPException(status_code=404, detail="task not found")
+    if t.state != TaskState.PENDING:
+        raise HTTPException(status_code=409,
+                            detail=f"task already {t.state.value}, cannot edit")
+    if payload.title is not None:
+        t.title = payload.title[:255]
+    if payload.description is not None:
+        t.description = payload.description[:2000]
+    if payload.input is not None:
+        # Preserve engine bookkeeping keys.
+        merged = dict(payload.input)
+        merged["_plan_id"] = (t.input or {}).get("_plan_id", "")
+        merged["_workspace"] = (t.input or {}).get("_workspace", {})
+        t.input = merged
+    db.commit()
+    db.refresh(t)
+    return TaskOut(
+        id=t.id, agent_name=t.agent_name, title=t.title,
+        description=t.description, state=t.state.value,
+        depends_on=t.depends_on or [], output=t.output or {}, error=t.error,
+    )
+
+
 @router.post("/workflows/{workflow_id}/resume", response_model=WorkflowOut)
 def resume(
     workflow_id: str,
@@ -162,6 +210,17 @@ def resume(
         raise HTTPException(status_code=404, detail="workflow not found")
     if wf.state not in {WorkflowState.WAITING_APPROVAL, WorkflowState.RUNNING, WorkflowState.PARTIAL}:
         raise HTTPException(status_code=409, detail=f"cannot resume from {wf.state.value}")
+    # A pending plan review must be approved first — resume must not bypass it.
+    from app.models.orm import Approval, ApprovalStatus
+
+    plan_pending = (
+        db.query(Approval)
+        .filter(Approval.workflow_id == wf.id, Approval.action == "plan_review",
+                Approval.status == ApprovalStatus.PENDING)
+        .count()
+    )
+    if plan_pending:
+        raise HTTPException(status_code=409, detail="approve the plan in Approvals first")
     # Tasks still in WAITING_APPROVAL remain paused until the approval
     # center decides; tasks that became eligible after approvals are
     # picked up by the engine.

@@ -26,6 +26,7 @@ export default function CommandPage() {
   const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
   const [attached, setAttached] = useState<string[]>([]);
   const [attaching, setAttaching] = useState(false);
+  const [planReview, setPlanReview] = useState(false);
 
   async function handleAttach(f: File) {
     if (!user) {
@@ -59,7 +60,7 @@ export default function CommandPage() {
         attached.length > 0
           ? `${objective}\n[Attached knowledge: ${attached.join(", ")} — search the Knowledge Vault for it.]`
           : objective;
-      const w = await api.submitCommand(full);
+      const w = await api.submitCommand(full, undefined, planReview);
       setWf(w);
       const ts = await api.listTasks(w.id);
       setTasks(ts);
@@ -195,6 +196,15 @@ export default function CommandPage() {
                 {err}
               </div>
             )}
+
+            <label className="flex items-center gap-2 mt-3 text-[11px] text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={planReview}
+                onChange={(e) => setPlanReview(e.target.checked)}
+              />
+              Pehle plan dikhao — Approvals me check/edit karke chalaunga
+            </label>
 
             {/* Actions */}
             <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-white/5">

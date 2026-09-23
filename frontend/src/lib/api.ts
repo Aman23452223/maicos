@@ -73,10 +73,15 @@ export const api = {
       body: JSON.stringify({ email, password, name, company_name }),
     }),
   me: () => request<{ id: string; email: string; name: string; roles: string[] }>("/v1/auth/me"),
-  submitCommand: (objective: string, conversation_id?: string) =>
+  submitCommand: (objective: string, conversation_id?: string, plan_review = false) =>
     request<Workflow>("/v1/commands", {
       method: "POST",
-      body: JSON.stringify({ objective, conversation_id }),
+      body: JSON.stringify({ objective, conversation_id, plan_review }),
+    }),
+  patchTask: (workflowId: string, taskId: string, patch: { title?: string; description?: string }) =>
+    request<WorkflowTask>(`/v1/workflows/${workflowId}/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
   listWorkflows: (state?: string) =>
     request<Workflow[]>(`/v1/workflows${state ? `?state=${state}` : ""}`),

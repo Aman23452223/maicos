@@ -51,6 +51,15 @@ class RegisterIn(BaseModel):
 class CommandIn(BaseModel):
     objective: str = Field(min_length=1)
     conversation_id: str | None = None
+    # When true, the workflow is created but NOT executed: a plan_review
+    # approval is raised first so the owner can inspect/edit the plan.
+    plan_review: bool = False
+
+
+class TaskPatchIn(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    input: dict[str, Any] | None = None
 
 
 class WorkflowOut(BaseModel):

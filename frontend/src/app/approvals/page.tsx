@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Approval } from "@/lib/types";
+import type { Approval, WorkflowTask } from "@/lib/types";
 
 export default function ApprovalsPage() {
   const { user, status, openAuthModal } = useAuth();
@@ -13,6 +13,33 @@ export default function ApprovalsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [planTasks, setPlanTasks] = useState<Record<string, WorkflowTask[]>>({});
+  const [editing, setEditing] = useState<Record<string, { id: string; title: string; description: string }>>({});
+
+  async function loadPlanTasks(approvalId: string, workflowId: string) {
+    try {
+      const ts = await api.listTasks(workflowId);
+      setPlanTasks((m) => ({ ...m, [approvalId]: ts }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleSaveTask(approvalId: string, workflowId: string, taskId: string) {
+    const e = editing[`${approvalId}:${taskId}`];
+    if (!e) return;
+    try {
+      await api.patchTask(workflowId, taskId, { title: e.title, description: e.description });
+      setEditing((m) => {
+        const n = { ...m };
+        delete n[`${approvalId}:${taskId}`];
+        return n;
+      });
+      loadPlanTasks(approvalId, workflowId);
+    } catch (err) {
+      setErr((err as Error).message);
+    }
+  }
 
   async function handleAnswer(id: string) {
     const note = (answers[id] || "").trim();
@@ -204,6 +231,10 @@ export default function ApprovalsPage() {
           {filteredItems.map((a) => {
             const isPending = a.status === "PENDING";
             const isDeciding = decidingId === a.id;
+            const isPlanReview = a.action === "plan_review";
+            if (isPending && isPlanReview && !planTasks[a.id]) {
+              loadPlanTasks(a.id, a.workflow_id);
+            }
 
             return (
               <div
@@ -244,6 +275,60 @@ export default function ApprovalsPage() {
                     <span className="font-mono text-[11px] text-muted/60">ID: {a.id.slice(0, 8)}…</span>
                   </div>
                 </div>
+
+                {/* Plan review: inspect + edit tasks, then approve to run */}
+                {isPlanReview && (
+                  <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 space-y-2">
+                    <div className="text-xs text-ink font-semibold">
+                      📋 Plan review — steps check karo, edit karo, phir Approve dabao (tabhi chalega):
+                    </div>
+                    {(planTasks[a.id] || []).map((t) => {
+                      const key = `${a.id}:${t.id}`;
+                      const ed = editing[key];
+                      return (
+                        <div key={t.id} className="p-2 rounded-md bg-black/40 border border-white/10 space-y-1">
+                          {ed ? (
+                            <>
+                              <input
+                                value={ed.title}
+                                onChange={(e) => setEditing({ ...editing, [key]: { ...ed, title: e.target.value } })}
+                                className="w-full bg-black/60 border border-white/10 rounded px-2 py-1 text-xs text-ink"
+                              />
+                              <input
+                                value={ed.description}
+                                onChange={(e) => setEditing({ ...editing, [key]: { ...ed, description: e.target.value } })}
+                                className="w-full bg-black/60 border border-white/10 rounded px-2 py-1 text-[11px] text-muted"
+                              />
+                              <button
+                                onClick={() => handleSaveTask(a.id, a.workflow_id, t.id)}
+                                className="px-3 py-1 rounded-md bg-ok text-bg text-[11px] font-semibold"
+                              >
+                                Save step
+                              </button>
+                            </>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs">
+                                <span className="font-mono text-accent">🤖 {t.agent_name}</span>
+                                <span className="text-ink"> — {t.title}</span>
+                              </div>
+                              {isPending && (
+                                <button
+                                  onClick={() =>
+                                    setEditing({ ...editing, [key]: { id: t.id, title: t.title, description: t.description } })
+                                  }
+                                  className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[11px] hover:bg-white/10"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Clarification question from agent */}
                 {a.action === "input_required" && (

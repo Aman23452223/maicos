@@ -90,6 +90,7 @@ def handle_objective(
     objective: str,
     conversation_id: str | None = None,
     enqueue_async: bool = False,
+    plan_review: bool = False,
 ) -> dict[str, Any]:
     ctx = _workspace_context(db, principal)
     plan = _build_plan(objective)
@@ -149,6 +150,40 @@ def handle_objective(
             target_type="workflow",
             target_id=wf.id,
             details={"trigger": "on_demand"},
+        )
+        db.commit()
+        return {
+            "workflow_id": wf.id,
+            "state": wf.state.value,
+            "plan": plan,
+            "tasks": _workflow_summary(wf),
+        }
+    if plan_review:
+        # Pause BEFORE execution: owner inspects/edits the task plan in the
+        # Approvals UI, then approves to run. Nothing has executed yet.
+        from app.approvals.service import create_approval
+        from app.models.orm import WorkflowState
+
+        create_approval(
+            db,
+            workflow=wf,
+            task_id=None,
+            requested_by_agent="ai_manager",
+            action="plan_review",
+            target_system="workflow",
+            description=(f"Review plan '{plan.get('intent', 'workflow')}' "
+                         f"({len(plan.get('tasks', []))} tasks) before execution."),
+            payload={"plan": plan},
+        )
+        wf.state = WorkflowState.WAITING_APPROVAL
+        record(
+            db,
+            company_id=principal.workspace_id,
+            actor=principal.user_id,
+            action="workflow.plan_review",
+            target_type="workflow",
+            target_id=wf.id,
+            details={"intent": plan.get("intent")},
         )
         db.commit()
         return {
