@@ -82,6 +82,47 @@ def list_workspaces(p: Principal = Depends(get_current_principal),
     return out
 
 
+@router.put("/workspaces/{workspace_id}/plan")
+def set_plan(workspace_id: str, payload: dict,
+             p: Principal = Depends(require_role("owner")),
+             db: Session = Depends(get_db)):
+    """Assign a subscription plan (billing foundation; no charges made here)."""
+    from app.capabilities.registry import PLANS
+
+    if workspace_id != p.workspace_id:
+        raise HTTPException(status_code=403, detail="cross-workspace plan change forbidden")
+    name = str(payload.get("name", "")).lower()
+    if name not in PLANS:
+        raise HTTPException(status_code=400, detail=f"plan must be one of {sorted(PLANS)}")
+    co = db.get(Company, workspace_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    co.plan = {"name": name}
+    record(db, company_id=workspace_id, actor=p.user_id, action="plan.changed",
+           target_type="workspace", target_id=workspace_id, details={"plan": name})
+    db.commit()
+    return {"id": co.id, "plan": name, "capabilities": sorted(PLANS[name])}
+
+
+@router.get("/billing/overview")
+def billing_overview(p: Principal = Depends(get_current_principal),
+                     db: Session = Depends(get_db)):
+    from sqlalchemy import func
+
+    from app.capabilities.registry import PLANS, enabled_for
+    from app.models.orm import AgentRun, Task, Workflow
+
+    co = db.get(Company, p.workspace_id)
+    plan_name = str(((co.plan or {}) if co else {}).get("name", "scale"))
+    tasks = db.query(func.count(Task.id)).filter(Task.workflow_id.in_(
+        db.query(Workflow.id).filter(Workflow.company_id == p.workspace_id))).scalar() or 0
+    return {"workspace_id": p.workspace_id, "plan": plan_name,
+            "plans_available": sorted(PLANS),
+            "capabilities": sorted(enabled_for(db, company_id=p.workspace_id)),
+            "usage": {"tasks": tasks},
+            "note": "Metered billing not yet charging; foundation only."}
+
+
 @router.post("/auth/switch")
 def switch_workspace(payload: dict, p: Principal = Depends(get_current_principal),
                      db: Session = Depends(get_db)):

@@ -75,6 +75,12 @@ def ingest_chunks(db: Session, *, company_id: str, document_id: str,
             embedding_model=emb_model, access_roles=access_roles or []))
         added += 1
     db.flush()
+    # Mirror 1536-dim vectors into the pgvector column (Postgres only).
+    if vecs and emb_status == "OK":
+        try:
+            _mirror_pgvector(db, company_id, document_id)
+        except Exception:
+            pass
     # Also feed legacy in-memory index for backward compat
     try:
         from app.rag.index import get_index
@@ -85,6 +91,49 @@ def ingest_chunks(db: Session, *, company_id: str, document_id: str,
         pass
     return {"added": added, "skipped": skipped, "embedding_status": emb_status,
             "model": emb_model}
+
+
+def _mirror_pgvector(db: Session, company_id: str, document_id: str) -> None:
+    """Copy JSON embeddings into embedding_vector where dims fit (1536)."""
+    from sqlalchemy import text as _text
+
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return
+    rows = db.query(DocumentChunk).filter(
+        DocumentChunk.company_id == company_id,
+        DocumentChunk.document_id == document_id).all()
+    for r in rows:
+        if not r.embedding or len(r.embedding) != 1536:
+            continue
+        vec = "[" + ",".join(str(float(x)) for x in r.embedding) + "]"
+        db.execute(_text('UPDATE "document_chunks" SET "embedding_vector" = '
+                         "(:v)::vector WHERE id = :i"),
+                   {"v": vec, "i": r.id})
+    db.flush()
+
+
+def _pg_candidates(db: Session, *, company_id: str, qvec: list[float],
+                   top_k: int) -> list | None:
+    """pgvector <-> search. Returns rows or None when unavailable."""
+    from sqlalchemy import text as _text
+
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return None
+    if len(qvec) != 1536:
+        return None
+    try:
+        vec = "[" + ",".join(str(float(x)) for x in qvec) + "]"
+        res = db.execute(
+            _text('SELECT id FROM "document_chunks" WHERE company_id = :ws '
+                  'AND embedding_vector IS NOT NULL '
+                  'ORDER BY embedding_vector <-> (:v)::vector LIMIT :k'),
+            {"ws": company_id, "v": vec, "k": top_k * 4}).fetchall()
+        if not res:
+            return []
+        ids = [r[0] for r in res]
+        return db.query(DocumentChunk).filter(DocumentChunk.id.in_(ids)).all()
+    except Exception:
+        return None
 
 
 def semantic_search(db: Session, *, company_id: str, query: str,
@@ -107,8 +156,15 @@ def semantic_search(db: Session, *, company_id: str, query: str,
                 "embedding_status": res.get("status", "NOT_CONFIGURED"),
                 "results": results}
     qvec = res["vectors"][0]
-    rows = db.query(DocumentChunk).filter(
-        DocumentChunk.company_id == company_id).limit(500).all()
+    # Prefer pgvector index when available (honestly reported below).
+    pg_rows = _pg_candidates(db, company_id=company_id, qvec=qvec, top_k=top_k)
+    if pg_rows:
+        rows = pg_rows
+        mode = "semantic_pgvector"
+    else:
+        rows = db.query(DocumentChunk).filter(
+            DocumentChunk.company_id == company_id).limit(500).all()
+        mode = "semantic"
     scored = []
     role_set = set(roles or [])
     for r in rows:
@@ -118,7 +174,7 @@ def semantic_search(db: Session, *, company_id: str, query: str,
             continue
         scored.append((_cosine(qvec, list(r.embedding)), r))
     scored.sort(key=lambda x: x[0], reverse=True)
-    return {"ok": True, "mode": "semantic", "embedding_status": "OK",
+    return {"ok": True, "mode": mode, "embedding_status": "OK",
             "results": [{"document_id": r.document_id, "chunk_id": r.id,
                          "snippet": r.text[:400], "score": round(float(s), 3),
                          "source": r.source, "source_url": r.source_url}

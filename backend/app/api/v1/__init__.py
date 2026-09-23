@@ -7,6 +7,7 @@ from app.api.v1 import (
     company,
     connections,
     context,
+    oauth,
     growth,
     integrations_health,
     intel,
@@ -32,4 +33,5 @@ api_router.include_router(integrations_health.router)
 api_router.include_router(connections.router)
 api_router.include_router(context.router)
 api_router.include_router(company.router)
+api_router.include_router(oauth.router)
 
