@@ -25,7 +25,8 @@ def test_intel_types_and_merge(db, monkeypatch):
                             "meta_description": "",
                             "text": "We sell shoes. Offer: 10% off. Open 9am-9pm. Call us.",
                             "emails": [], "phones": [],
-                            "social_links": [], "ctas": []})()]
+                            "social_links": [], "ctas": [],
+                            "headings": [], "list_items": [], "links": []})()]
     monkeypatch.setattr(intel, "crawl_site", lambda url: pages)
     monkeypatch.setattr(intel, "llm_enhance", lambda p: p)
     co, _ = _ws(db, "o@biz-a.test", "Biz A")
@@ -63,7 +64,8 @@ def test_intel_tenant_isolation(db, monkeypatch):
                             "meta_description": "",
                             "text": "Services and food menu.",
                             "emails": [], "phones": [],
-                            "social_links": [], "ctas": []})()]
+                            "social_links": [], "ctas": [],
+                            "headings": [], "list_items": [], "links": []})()]
     monkeypatch.setattr(intel, "crawl_site", lambda url: pages)
     monkeypatch.setattr(intel, "llm_enhance", lambda p: p)
     co_a, _ = _ws(db, "a@biz.test", "Biz A")

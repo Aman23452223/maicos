@@ -33,15 +33,7 @@ def extract_profile(pages: list[PageData], base_url: str) -> dict[str, Any]:
     name = home.title.split("|")[0].split("-")[0].split(":")[0].strip()[:200]
     if not name:
         name = _domain(base_url)
-    # services: sentences containing service hints
-    services: list[str] = []
-    for sent in re.split(r"[.\n•|]+", all_text):
-        s = sent.strip()
-        if 8 < len(s) < 160 and any(h in s.lower() for h in SERVICE_HINTS):
-            if s not in services:
-                services.append(s)
-        if len(services) >= 15:
-            break
+    services = _extract_services(pages, all_text, name)
     # industries / geo heuristics
     industries = sorted({h for h in SERVICE_HINTS if h in low})[:10]
     emails = sorted({e for p in pages for e in p.emails})[:10]
@@ -154,6 +146,53 @@ def _extract_faqs(pages: list[PageData]) -> list[dict[str, str]]:
     return faqs
 
 
+def _extract_services(pages: list[PageData], all_text: str, site_name: str) -> list[str]:
+    """Services from headings, nav links and list items first (specific),
+    hint-sentence scan as fallback. Title echoes excluded."""
+    seen: list[str] = []
+
+    def add(s: str) -> None:
+        s = re.sub(r"\s+", " ", s).strip(" -–—•|")
+        if (len(s) < 3 or len(s) > 120 or s.lower() == site_name.lower()
+                or s in seen):
+            return
+        seen.append(s)
+
+    nav_texts: list[str] = []
+    for p in pages:
+        for link in p.links:
+            t = (link.get("text") or "").strip()
+            if 2 < len(t) < 60 and t.lower() not in ("home", "login", "sign in"):
+                nav_texts.append(t)
+    # headings that look like offerings (skip generic hero fluff)
+    for p in pages:
+        for h in p.headings:
+            if any(k in h.lower() for k in ("service", "offer", "solution", "product",
+                                            "menu", "repair", "clean", "book",
+                                            "hire", "plan", "price")):
+                add(h)
+    # nav items mentioning offerings
+    for t in nav_texts:
+        if any(k in t.lower() for k in SERVICE_HINTS):
+            add(t)
+    # list items (menus, feature bullets)
+    for p in pages:
+        for li in p.list_items[:40]:
+            if 4 < len(li) < 120:
+                add(li)
+            if len(seen) >= 15:
+                break
+    # fallback: hint sentences from body
+    if len(seen) < 5:
+        for sent in re.split(r"[.\n•|]+", all_text):
+            s = sent.strip()
+            if 8 < len(s) < 160 and any(h in s.lower() for h in SERVICE_HINTS):
+                add(s)
+            if len(seen) >= 15:
+                break
+    return seen[:15]
+
+
 def _infer_geography(text: str, phones: list[str]) -> str:
     """Generic location signals: city-like patterns + phone country hints."""
     import re
@@ -179,21 +218,40 @@ def _infer_geography(text: str, phones: list[str]) -> str:
 def _infer_audience(
     text: str, services: list[str], ctas: list[str], geography: str
 ) -> str:
-    """Generic audience string from intent signals, not industry templates."""
+    """Specific audience from detected nouns + geo + intent (no templates)."""
     low = text.lower()
+    # service nouns actually present on the site
+    nouns = sorted({h for h in SERVICE_HINTS if h in low})
+    # who-terms the site itself uses
+    who: list[str] = []
+    for pat in (r"(?:for|serve|serving|trusted by)\s+([a-z][a-z\s&,'-]{2,60})",):
+        for m in re.finditer(pat, low):
+            cand = m.group(1).strip(" ,.-")
+            if 3 < len(cand) < 70 and cand not in who:
+                who.append(cand)
+            if len(who) >= 3:
+                break
     intents: list[str] = []
-    if any(k in low for k in ("book", "table", "reserve", "order", "menu")):
-        intents.append("people looking to book/order")
-    if any(k in low for k in ("contact", "quote", "demo", "trial", "sign up")):
-        intents.append("potential buyers evaluating the offering")
-    if any(k in low for k in ("career", "hiring", "job")):
-        intents.append("job seekers")
-    if not intents:
-        intents.append("visitors interested in the offering")
-    scope = ", ".join(services[:2]) if services else "the offering"
-    geo = f" in {geography}" if geography else ""
-    cta = f" (CTA: {', '.join(ctas[:2])})" if ctas else ""
-    return f"{'; '.join(intents)} — {scope}{geo}{cta}"[:1000]
+    if any(k in low for k in ("book", "table", "reserve", "order", "menu", "appointment")):
+        intents.append("book/order")
+    if any(k in low for k in ("quote", "demo", "trial", "sign up", "contact", "hire")):
+        intents.append("get quotes/demos")
+    parts: list[str] = []
+    if who:
+        parts.append("Who: " + "; ".join(who))
+    if nouns:
+        parts.append("Needs: " + ", ".join(nouns[:6]))
+    elif services:
+        parts.append("Needs: " + ", ".join(s.lower() for s in services[:3]))
+    if geography:
+        parts.append(f"Where: {geography}")
+    if intents:
+        parts.append("Intent: " + ", ".join(intents))
+    if ctas:
+        parts.append("Entry: " + ", ".join(ctas[:3]))
+    if not parts:
+        return "Could not determine audience from public content."
+    return " | ".join(parts)[:1000]
 
 
 def llm_enhance(profile: dict[str, Any], objective: str = "") -> dict[str, Any]:
