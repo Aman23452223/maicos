@@ -94,10 +94,10 @@ CATALOG: list[dict[str, Any]] = [
     {
         "provider": "github",
         "name": "GitHub",
-        "description": "Repository read + pull requests (scoped token).",
+        "description": "Repository read + pull requests + AI code PRs (scoped token).",
         "auth_type": "api_key",
         "required_envs": ["GITHUB_TOKEN"],
-        "actions": ["repo_info", "open_pr"],
+        "actions": ["repo_info", "open_pr", "build_pr"],
     },
     {
         "provider": "vercel",
@@ -189,6 +189,15 @@ def execute_action(provider: str, action: str, payload: dict,
                 str(payload.get("repo", "")), str(payload.get("title", "")),
                 str(payload.get("head", "")), str(payload.get("base", "main")),
                 str(payload.get("body", "")))
+        if action == "build_pr":
+            from app.company.software import build_pr as _build_pr
+
+            return _build_pr(
+                str(payload.get("repo", "")),
+                requirements=str(payload.get("requirements", "")),
+                branch=str(payload.get("branch", "")),
+                base=str(payload.get("base", "main") or "main"),
+                stack_hint=str(payload.get("stack", "")))
     if provider == "vercel" and action == "list_deployments":
         from app.devops import providers as devops
 

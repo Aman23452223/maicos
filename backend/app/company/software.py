@@ -24,6 +24,66 @@ def analyze_repo(repo: str) -> dict[str, Any]:
                                    "before implementation planning.")}}
 
 
+MAX_GEN_FILES = 10
+MAX_FILE_CHARS = 4000
+
+
+def generate_code(requirements: str, *, stack_hint: str = "") -> dict[str, Any]:
+    """LLM generates small file set from requirements (review artifact).
+
+    Never pushes anything. Output is meant for human review + approval
+    before any PR. Honest about being a starting point, not tested code.
+    """
+    requirements = (requirements or "").strip()
+    if not requirements:
+        return {"ok": False, "status": "FAILED", "error": "requirements required"}
+    try:
+        from app.llm.gateway import LLMRequest, get_llm
+    except Exception as exc:
+        return {"ok": False, "status": "NOT_CONFIGURED",
+                "error": f"LLM unavailable: {exc}"}
+    import json as _json
+
+    sys = ("You generate a SMALL starter codebase as JSON: "
+           '{"files":[{"path":"...","content":"..."}]}. '
+           f"Max {MAX_GEN_FILES} files, each under {MAX_FILE_CHARS} chars. "
+           "Prefer a single-page static site or tiny script unless asked otherwise. "
+           "No secrets, no placeholders that pretend to work.")
+    try:
+        llm = get_llm()
+        out = llm.complete(LLMRequest(
+            system=sys,
+            user=f"Stack: {stack_hint or 'static HTML/CSS/JS'}\n\nRequirements:\n{requirements[:4000]}",
+            json_mode=True)).text
+        data = _json.loads(out)
+        files = [{"path": str(f.get("path", ""))[:200],
+                  "content": str(f.get("content", ""))[:MAX_FILE_CHARS]}
+                 for f in data.get("files", [])][:MAX_GEN_FILES]
+        files = [f for f in files if f["path"] and f["content"]]
+        if not files:
+            return {"ok": False, "status": "FAILED",
+                    "error": "LLM returned no usable files"}
+        return {"ok": True, "status": "OK", "files": files,
+                "notice": "Untested starter code — review, CI and smoke test required."}
+    except Exception as exc:
+        return {"ok": False, "status": "PROVIDER_ERROR",
+                "error": f"generation failed: {exc}"[:300]}
+
+
+def build_pr(repo: str, *, requirements: str, branch: str,
+             base: str = "main", stack_hint: str = "") -> dict[str, Any]:
+    """Generate code + open PR (caller must have approval for the push)."""
+    from app.devops.providers import github_create_files_pr
+
+    gen = generate_code(requirements, stack_hint=stack_hint)
+    if not gen.get("ok"):
+        return gen
+    return github_create_files_pr(
+        repo, branch, base, gen["files"],
+        title=f"MAICOS build: {requirements[:80]}",
+        body="Starter implementation. CI + review required before merge.")
+
+
 def plan_as_pr(repo: str, *, title: str, plan_markdown: str,
                head: str = "", base: str = "main") -> dict[str, Any]:
     """Open a PR containing ONLY the implementation plan document.

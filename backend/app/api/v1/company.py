@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.service import record
 from app.core.context import Principal
-from app.core.security import get_current_principal
+from app.core.security import get_current_principal, require_role
 from app.db.session import get_db
 from app.models.orm import (
     CompanyDecision,
@@ -134,6 +134,48 @@ def software_analyze(payload: SoftwareIn,
 
     _ = (db, p)
     return analyze_repo(payload.repo)
+
+
+class BuildIn(BaseModel):
+    repo: str = ""
+    branch: str = ""
+    base: str = "main"
+    requirements: str = ""
+    stack: str = ""
+    confirmed: bool = False
+
+
+@router.post("/company/software/generate")
+def software_generate(payload: BuildIn,
+                      p: Principal = Depends(get_current_principal),
+                      db: Session = Depends(get_db)):
+    """Review artifact only: LLM-generated files, never pushed."""
+    from app.company.software import generate_code
+
+    _ = (db, p)
+    if not payload.requirements.strip():
+        raise HTTPException(status_code=400, detail="requirements required")
+    return generate_code(payload.requirements, stack_hint=payload.stack)
+
+
+@router.post("/company/software/build-pr")
+def software_build_pr(payload: BuildIn,
+                      p: Principal = Depends(require_role("admin", "owner")),
+                      db: Session = Depends(get_db)):
+    from app.company.software import build_pr
+
+    if not payload.confirmed:
+        raise HTTPException(status_code=422, detail="confirmed:true required (code push)")
+    out = build_pr(payload.repo, requirements=payload.requirements,
+                   branch=payload.branch, base=payload.base or "main",
+                   stack_hint=payload.stack)
+    record(db, company_id=p.workspace_id, actor=p.user_id,
+           action="software.build_pr", target_type="repo",
+           target_id=payload.repo, details={"ok": out.get("ok")})
+    db.commit()
+    if not out.get("ok"):
+        raise HTTPException(status_code=422, detail=out.get("error") or out.get("status"))
+    return out
 
 
 @router.post("/company/software/plan-pr")
