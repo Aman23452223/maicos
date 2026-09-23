@@ -9,6 +9,8 @@ const ROUTE_NAMES: Record<string, { title: string; subtitle: string; icon: strin
   "/": { title: "Overview", subtitle: "Workspace Dashboard", icon: "📊" },
   "/dashboard": { title: "Dashboard", subtitle: "Live Business Overview", icon: "📊" },
   "/company": { title: "Company OS", subtitle: "Outcome Execution + Workforce", icon: "🏭" },
+  "/startup": { title: "Startup Builder", subtitle: "Idea to Launch", icon: "🚀" },
+  "/explore": { title: "Explore Idea", subtitle: "Research Without Execution", icon: "💡" },
   "/command": { title: "Command Center", subtitle: "Natural Language Task Delegation", icon: "⚡" },
   "/workflows": { title: "Workflows", subtitle: "Autonomous Execution Pipeline", icon: "🔁" },
   "/approvals": { title: "Approval Center", subtitle: "Human-in-the-Loop Decisions", icon: "🛡️" },

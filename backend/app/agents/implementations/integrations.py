@@ -19,6 +19,23 @@ class IntegrationAgent:
         action = str(task.input.get("action", ""))
         if not provider or not get_entry(provider):
             return AgentResult(error=f"unknown integration provider: {provider or '?'}")
+        payload = dict(task.input.get("payload", {}))
+        if provider == "github" and action in ("repo_info", "open_pr") \
+                and not str(payload.get("repo", "")).strip():
+            import re as _re
+
+            m = _re.search(r"github\.com/([\w.-]+/[\w.-]+)",
+                           f"{task.description} {task.input.get('objective', '')}")
+            if m:
+                payload["repo"] = m.group(1)
+            else:
+                return AgentResult(
+                    needs_input={
+                        "question": ("Which GitHub repository? Reply owner/repo "
+                                     "(e.g. acme/website)."),
+                        "field": "_answer_repo",
+                    },
+                    output={"provider": provider})
         if not action:
             # Status inquiry: honest connected/not-connected message.
             from app.integrations.catalog import verify
@@ -31,7 +48,10 @@ class IntegrationAgent:
                             f"Connect {provider} from Integrations first. "
                             f"{v.get('error', '')}"),
             })
-        out = execute_action(provider, action, dict(task.input.get("payload", {})),
+        if task.input.get("_answer_repo") and provider == "github" \
+                and not str(payload.get("repo", "")).strip():
+            payload["repo"] = str(task.input["_answer_repo"]).strip()
+        out = execute_action(provider, action, payload,
                              workspace_id=ctx.principal.workspace_id)
         if not out.get("ok"):
             return AgentResult(output={

@@ -15,10 +15,19 @@ from app.agents.registry import register
 from app.llm.gateway import LLMRequest, get_llm
 
 INTENTS = {
-    "onboard_client": ["onboard", "new client", "new customer"],
     "schedule_meeting": ["schedule meeting", "meeting with", "meeting kar",
                          "schedule a call", "book a meeting", "appointment",
                          "schedule call"],
+    "hiring": ["hire", "hiring", "recruit", "need developers", "need a designer",
+               "looking for developers", "delivery partners", "field agents",
+               "find developers", "job description"],
+    "partner_acquisition": ["partner", "suppliers", "vendors",
+                            "sellers", "onboard restaurants", "supply acquisition",
+                            "restaurant partners"],
+    "creator_campaign": ["influencer", "influencers", "creator", "creators"],
+    "software_build": ["build website", "build app", "build my website", "build mvp",
+                       "develop app", "prd", "product requirements"],
+    "onboard_client": ["onboard", "new client", "new customer"],
     "meeting_prep": ["prepare", "meeting", "brief"],
     "create_project": ["launch", "create project", "new project"],
     "invoice_followup": ["overdue", "invoice", "payment reminder", "receivable"],
@@ -540,6 +549,89 @@ def _plan_campaign(objective: str) -> dict[str, Any]:
     }
 
 
+def _plan_hiring(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "hiring",
+        "tasks": [{
+            "id": "triage",
+            "agent": "hr",
+            "title": "Clarify hiring need",
+            "description": objective,
+            "input": {"action": "triage_hiring", "objective": objective},
+            "depends_on": [],
+        }],
+    }
+
+
+def _plan_partner_acquisition(objective: str) -> dict[str, Any]:
+    base = _plan_campaign(objective)
+    base["intent"] = "partner_acquisition"
+    base["tasks"][0]["title"] = "Discover partner prospects"
+    base["tasks"][0]["input"]["segment"] = "partners"
+    return base
+
+
+def _plan_creator_campaign(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "creator_campaign",
+        "tasks": [
+            {"id": "discover", "agent": "sales_crm", "title": "Discover creators",
+             "description": f"Find creators matching: {objective}",
+             "input": {"action": "discover_creators", "objective": objective,
+                       "limit": 15},
+             "depends_on": []},
+            {"id": "outreach", "agent": "communication",
+             "title": "Draft creator outreach",
+             "description": f"Personalized outreach for: {objective}",
+             "input": {"action": "draft", "subject": "Collaboration",
+                       "body": objective},
+             "depends_on": ["discover"]},
+            {"id": "send", "agent": "communication", "title": "Send outreach",
+             "description": "Approval-gated send to creators with addresses.",
+             "input": {"action": "bulk_send", "channel": "email",
+                       "bulk_query": objective, "subject": "Collaboration",
+                       "body": objective},
+             "depends_on": ["outreach"]},
+            {"id": "report", "agent": "analytics", "title": "Campaign report",
+             "description": "Results for the creator campaign.",
+             "input": {"action": "report"},
+             "depends_on": ["send"]},
+        ],
+    }
+
+
+def _plan_software_build(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "software_build",
+        "tasks": [
+            {"id": "requirements", "agent": "project_ops",
+             "title": "Write PRD",
+             "description": f"Requirements + PRD for: {objective}",
+             "input": {"action": "create_doc", "kind": "prd",
+                       "title": "PRD", "requirements": objective},
+             "depends_on": []},
+            {"id": "repo", "agent": "integrations",
+             "title": "Inspect repository",
+             "description": f"Analyze connected repo for: {objective}",
+             "input": {"provider": "github", "action": "repo_info",
+                       "payload": {}},
+             "depends_on": ["requirements"]},
+            {"id": "plan_pr", "agent": "integrations",
+             "title": "Implementation plan review",
+             "description": "Plan-as-PR for human review (approval-gated).",
+             "input": {"provider": "github", "action": "open_pr",
+                       "payload": {}},
+             "depends_on": ["repo"]},
+            {"id": "deploy_status", "agent": "integrations",
+             "title": "Deployment status",
+             "description": "Check staging/production deployment status.",
+             "input": {"provider": "vercel", "action": "list_deployments",
+                       "payload": {}},
+             "depends_on": ["plan_pr"]},
+        ],
+    }
+
+
 def _plan_lead_outreach(objective: str) -> dict[str, Any]:
     from app.workflow.templates import lead_outreach
 
@@ -561,6 +653,14 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_onboard_client(objective)
     if intent == "schedule_meeting":
         return _plan_schedule_meeting(objective)
+    if intent == "hiring":
+        return _plan_hiring(objective)
+    if intent == "partner_acquisition":
+        return _plan_partner_acquisition(objective)
+    if intent == "creator_campaign":
+        return _plan_creator_campaign(objective)
+    if intent == "software_build":
+        return _plan_software_build(objective)
     if intent == "meeting_prep":
         return _plan_meeting_prep(objective)
     if intent == "create_project":

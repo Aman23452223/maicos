@@ -94,9 +94,10 @@ class SalesCRMAgent:
                     "note": "demo fallback: pass lead_id for real DB scoring",
                 }
             )
-        if action in ("discover", "enrich", "deduplicate", "qualify", "score",
-                      "crm", "select_qualified", "schedule_followups", "convert",
-                      "import", "report", "qualify_batch"):
+        if action in ("discover", "discover_creators", "enrich", "deduplicate",
+                      "qualify", "score", "crm", "select_qualified",
+                      "schedule_followups", "convert", "import", "report",
+                      "qualify_batch"):
             try:
                 return self._lifecycle(task, ctx)
             except ValueError as exc:
@@ -162,6 +163,21 @@ class SalesCRMAgent:
                     continue
             ctx.db.commit()
             return AgentResult(output={"qualified": done})
+        if action == "discover_creators":
+            from app.leads.creators import discover as discover_creators
+
+            res = discover_creators(
+                str(task.input.get("objective") or task.description or ""),
+                limit=int(task.input.get("limit", 15)))
+            if not res.get("ok"):
+                return AgentResult(output={"status": res.get("status"),
+                                           "message": res.get("message"), "count": 0})
+            creators = res["creators"]
+            out = import_prospects(ctx.db, company_id=ws, prospects=creators,
+                                   actor="sales_crm")
+            ctx.db.commit()
+            return AgentResult(output={"status": "OK", "count": len(creators),
+                                       "imported": out})
         if action == "import":
             raw = task.input.get("prospects") or []
             prospects = [Prospect(**r) if isinstance(r, dict) else r for r in raw]

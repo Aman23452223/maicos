@@ -28,9 +28,78 @@ class HRAgent:
         "crm.activity.record",
     ]
 
+    def _start_hiring(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
+        """Human hiring pipeline start: role record + approval-gated plan."""
+        from app.models.orm import WorkforceRole
+
+        ws = ctx.principal.workspace_id
+        role_title = str(task.input.get("role", "") or "").strip()
+        if not role_title:
+            import re as _re
+            m = _re.search(r"(?:hire|hiring|recruit|need|looking for)\s+(?:a\s+|an\s+)?([A-Za-z][\w\s/-]{2,60})",
+                           f"{task.input.get('objective', '')} {task.description}",
+                           _re.IGNORECASE)
+            role_title = m.group(1).strip() if m else ""
+        if not role_title:
+            return AgentResult(
+                needs_input={"question": "Which role should I hire for? (title + key requirements)",
+                             "field": "_answer"}, output={})
+        row = WorkforceRole(company_id=ws, title=role_title[:255], kind="human",
+                            status="sourcing")
+        ctx.db.add(row)
+        ctx.db.flush()
+        call_tool(ctx, "crm", "activity.record",
+                  {"type": "hiring.started", "role": role_title, "role_id": row.id})
+        ctx.db.commit()
+        return AgentResult(
+            needs_approval={
+                "action": "hire_human",
+                "target_system": "hr",
+                "description": (f"Start hiring pipeline for '{role_title}': source, "
+                                f"screen, shortlist, interview, offer. Human decisions "
+                                f"at every stage."),
+                "payload": {"_operation": "hiring.start", "role_id": row.id,
+                            "role": role_title},
+            })
+
+    def execute_approved(self, approval: dict, ctx: AgentContext) -> AgentResult:
+        payload = approval.get("payload", {})
+        if payload.get("_operation") == "hiring.start":
+            return AgentResult(output={"hiring": "approved",
+                                       "role_id": payload.get("role_id"),
+                                       "next": "sourcing -> screening -> interview -> offer"})
+        raise NotImplementedError
+
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action")
         ws = ctx.principal.workspace_id
+        if action == "triage_hiring":
+            # Mandatory AI-vs-human distinction. Decisive keywords route
+            # directly; ambiguous requests ask instead of guessing.
+            text = f"{task.input.get('objective', '')} {task.description}".lower()
+            human_hit = any(k in text for k in
+                            ("hire", "hiring", "recruit", "salary", "payroll",
+                             "employee", "resume", "interview", "onboard human"))
+            ai_hit = any(k in text for k in
+                         ("ai agent", "ai worker", "automate", "bot ", "code it",
+                          "build it with ai"))
+            if human_hit and not ai_hit:
+                return self._start_hiring(task, ctx)
+            if ai_hit and not human_hit:
+                return AgentResult(output={
+                    "route": "ai_workforce",
+                    "message": ("Routed to AI workforce planning. Describe the software "
+                                "outcome and the engineering plan will be composed.")})
+            return AgentResult(
+                needs_input={
+                    "question": ("Do you want (A) HUMAN hires — recruitment pipeline "
+                                 "with approvals, or (B) AI workers — software built by "
+                                 "the AI workforce? Reply A or B."),
+                    "field": "_answer",
+                },
+                output={})
+        if action == "start_hiring":
+            return self._start_hiring(task, ctx)
         if action == "add_candidate":
             cid = str(uuid.uuid4())
             rec = {

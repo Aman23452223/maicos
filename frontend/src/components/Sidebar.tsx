@@ -15,10 +15,17 @@ type NavItem = {
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
+    title: "MODES",
+    items: [
+      { href: "/startup", label: "Startup Builder", icon: "🚀" },
+      { href: "/company", label: "Company OS", icon: "🏭" },
+      { href: "/explore", label: "Explore Idea", icon: "💡" },
+    ],
+  },
+  {
     title: "OPERATIONS",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: "📊" },
-      { href: "/company", label: "Company OS", icon: "🏭" },
       { href: "/command", label: "AI Command Center", icon: "⚡" },
       { href: "/workflows", label: "Workflows", icon: "🔁" },
       { href: "/approvals", label: "Approvals", icon: "🛡️", badgeKey: "approvals" },

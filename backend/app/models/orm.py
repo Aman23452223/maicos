@@ -763,6 +763,36 @@ class CompanyTask(Base):
     )
 
 
+class StartupBlueprint(Base):
+    """Stored startup blueprint (draft -> approved -> applied)."""
+
+    __tablename__ = "startup_blueprints"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    idea: Mapped[str] = mapped_column(Text, default="")
+    sections: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WorkforceRole(Base):
+    """Human or AI role definitions for the startup/company (not users)."""
+
+    __tablename__ = "workforce_roles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    kind: Mapped[str] = mapped_column(String(40), default="ai", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="planned", index=True)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CompanyEvent(Base):
     """Internal event bus records (workspace-scoped)."""
 

@@ -197,6 +197,52 @@ export const api = {
     ),
   companyUsage: () =>
     request<{ type: string; tasks: number; tool_calls: number; note: string }>("/v1/usage"),
+  startupIdea: (idea: string) =>
+    request<Record<string, unknown>>("/v1/startup/idea", {
+      method: "POST",
+      body: JSON.stringify({ idea }),
+    }),
+  startupValidate: (idea: string) =>
+    request<{
+      findings: string[]; sources: string[]; assumptions: string[];
+      risks: string[]; opportunities: string[]; open_questions: string[];
+      research_status: string;
+    }>("/v1/startup/validate", { method: "POST", body: JSON.stringify({ idea }) }),
+  startupBlueprintSave: (idea: string, sections: Record<string, unknown>) =>
+    request<{ id: string; status: string }>("/v1/startup/blueprint", {
+      method: "POST",
+      body: JSON.stringify({ idea, sections }),
+    }),
+  startupBlueprints: () =>
+    request<{ id: string; idea: string; status: string; sections: number }[]>(
+      "/v1/startup/blueprints",
+    ),
+  startupBlueprintApprove: (id: string) =>
+    request<{ id: string; status: string }>(`/v1/startup/blueprints/${id}/approve`, {
+      method: "POST",
+    }),
+  startupBlueprintApply: (id: string) =>
+    request<Record<string, unknown>>(`/v1/startup/blueprints/${id}/apply`, {
+      method: "POST",
+    }),
+  startupCreateWorkspace: (name: string, blueprint_id?: string) =>
+    request<{ id: string; name: string }>("/v1/startup/create-workspace", {
+      method: "POST",
+      body: JSON.stringify({ name, blueprint_id }),
+    }),
+  startupStatus: () =>
+    request<{ stages: Record<string, { done: boolean; detail: string }>; readiness: number; done: number; total: number }>(
+      "/v1/startup/status",
+    ),
+  startupRoles: () =>
+    request<{ id: string; title: string; kind: string; status: string }[]>(
+      "/v1/startup/roles",
+    ),
+  startupRoleAdd: (title: string, kind: string) =>
+    request<{ id: string }>("/v1/startup/roles", {
+      method: "POST",
+      body: JSON.stringify({ title, kind }),
+    }),
   discoverLeads: (query: string, provider = "search", limit = 20) =>
     request<{ status: string; message: string; prospects: Record<string, unknown>[] }>(
       "/v1/leads/discover",

@@ -45,6 +45,20 @@ class ProjectOpsAgent:
                 "project": {"id": project.id, "name": project.name,
                             "owner": project.owner, "deadline": project.deadline},
                 "tasks": created})
+        if action == "create_doc":
+            from app.docs_gen.proposals import create as create_proposal
+
+            kind = str(task.input.get("kind", "proposal"))
+            title = str(task.input.get("title", "Document"))
+            context = {"title": title,
+                       "requirements": task.input.get("requirements", ""),
+                       "scope": task.input.get("scope", ""),
+                       "timeline": task.input.get("timeline", "")}
+            doc = create_proposal(ctx.db, company_id=ws, kind=kind, title=title,
+                                  context=context, actor="project_ops")
+            ctx.db.commit()
+            return AgentResult(output={"document_id": doc.id, "kind": kind,
+                                       "title": title})
         if action == "list_overdue":
             rows = ctx.db.query(CompanyProject).filter(
                 CompanyProject.company_id == ws,

@@ -139,6 +139,33 @@ export default function MAICOSLanding() {
         </div>
       </section>
 
+      {/* ── MODE SELECT ── */}
+      <section className="m-section" id="start">
+        <div className="m-container">
+          <div className="m-section-header">
+            <p className="m-overline">What do you want to do?</p>
+            <h2 className="m-h2">Three ways to work with MAICOS</h2>
+          </div>
+          <div className="m-agents-grid">
+            <Link href="/startup" className="m-agent-card">
+              <div style={{ fontSize: 28 }}>🚀</div>
+              <h3>BUILD A STARTUP</h3>
+              <p>Start from an idea and build a company from zero to launch and operations.</p>
+            </Link>
+            <Link href="/company" className="m-agent-card">
+              <div style={{ fontSize: 28 }}>🏢</div>
+              <h3>RUN A COMPANY</h3>
+              <p>Connect your existing business and let MAICOS manage its operations.</p>
+            </Link>
+            <Link href="/explore" className="m-agent-card">
+              <div style={{ fontSize: 28 }}>💡</div>
+              <h3>EXPLORE AN IDEA</h3>
+              <p>Research, validate and plan an idea — no execution until you say build it.</p>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ── PHILOSOPHY ── */}
       <section className="m-section m-philosophy">
         <div className="m-container m-container--narrow text-center">

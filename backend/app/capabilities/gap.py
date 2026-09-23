@@ -10,6 +10,10 @@ from app.integrations.catalog import verify as verify_provider
 
 # intent -> capabilities it needs
 INTENT_CAPABILITIES: dict[str, list[str]] = {
+    "hiring": ["hr"],
+    "partner_acquisition": ["lead_discovery", "crm", "email"],
+    "creator_campaign": ["lead_discovery", "email"],
+    "software_build": ["project_management", "knowledge"],
     "lead_generation": ["lead_discovery", "crm", "analytics"],
     "lead_outreach": ["crm", "email", "followup"],
     "campaign": ["lead_discovery", "crm", "email", "followup", "analytics"],

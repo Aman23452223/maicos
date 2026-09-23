@@ -33,6 +33,11 @@ WORKER_MAP: dict[str, tuple[str, str]] = {
 
 # intent -> capabilities the outcome needs (generic, composable)
 INTENT_WORKFORCE: dict[str, list[str]] = {
+    "hiring": ["hr"],
+    "partner_acquisition": ["lead_discovery", "crm", "email", "followup",
+                            "analytics"],
+    "creator_campaign": ["lead_discovery", "email", "analytics"],
+    "software_build": ["project_management", "knowledge", "analytics"],
     "lead_generation": ["lead_discovery", "lead_enrichment", "qualification",
                         "scoring", "crm", "analytics"],
     "campaign": ["lead_discovery", "crm", "email", "followup", "analytics"],

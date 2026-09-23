@@ -11,8 +11,10 @@ ALLOWED_TYPES = {
     "lead.created", "lead.qualified", "lead.converted", "customer.created",
     "payment.received", "payment.failed", "meeting.booked", "meeting.cancelled",
     "deployment.failed", "deployment.succeeded", "task.failed",
-    "workflow.completed", "goal.progress_changed", "budget.threshold_reached",
-    "integration.failed",
+    "workflow.completed", "goal.created", "goal.progress_changed",
+    "budget.threshold_reached", "integration.failed", "integration.disconnected",
+    "startup.created", "project.created", "campaign.started", "campaign.completed",
+    "partner.onboarded",
 }
 
 
