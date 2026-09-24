@@ -19,6 +19,11 @@ def create_request(db: Session, *, company_id: str, amount: int,
                    opportunity_id: str | None = None, actor: str = "user") -> dict:
     provider = (provider or "manual").lower()
     if provider == "manual":
+        from app.policy.risk import check_spend
+
+        ok, reason = check_spend(db, company_id=company_id, amount=int(amount or 0))
+        if not ok and "exceeded" in reason:
+            return {"ok": False, "status": "FORBIDDEN", "error": reason}
         pr = PaymentRequest(company_id=company_id, opportunity_id=opportunity_id,
                             provider="manual", amount=int(amount), currency=currency,
                             status="pending", provider_ref=str(uuid.uuid4()))

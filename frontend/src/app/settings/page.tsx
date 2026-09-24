@@ -38,6 +38,10 @@ export default function SettingsPage() {
   const [autoEmail, setAutoEmail] = useState(false);
   const [autoWhatsapp, setAutoWhatsapp] = useState(false);
   const [savingSend, setSavingSend] = useState(false);
+  const [apEnabled, setApEnabled] = useState(false);
+  const [apReplan, setApReplan] = useState(false);
+  const [apCap, setApCap] = useState(0);
+  const [savingAp, setSavingAp] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -54,10 +58,41 @@ export default function SettingsPage() {
       } catch {
         /* profile optional */
       }
+      try {
+        const ap = await api.getAutopilot();
+        setApEnabled(!!ap.enabled);
+        setApCap(Number(ap.max_spend_month) || 0);
+        setApReplan(!!ap.auto_replan);
+      } catch {
+        /* autopilot optional */
+      }
     } catch (e) {
       setErr((e as Error).message);
     }
   }, [user]);
+
+  async function handleSaveAutopilot() {
+    setSavingAp(true);
+    setMsg(null);
+    setErr(null);
+    try {
+      const auto_channels: string[] = [];
+      if (autoEmail) auto_channels.push("email");
+      if (autoWhatsapp) auto_channels.push("whatsapp");
+      await api.putAutopilot({
+        enabled: apEnabled,
+        max_spend_month: apCap,
+        auto_channels,
+        auto_invoice_below: 0,
+        auto_replan: apReplan,
+      });
+      setMsg("Autopilot saved.");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSavingAp(false);
+    }
+  }
 
   async function handleSaveSending() {
     setSavingSend(true);
@@ -276,6 +311,38 @@ export default function SettingsPage() {
               className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-ink border border-white/10 text-xs font-medium disabled:opacity-50"
             >
               {savingSend ? "Saving…" : "Save Sending Mode"}
+            </button>
+          </div>
+
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2">
+            <div className="text-xs font-semibold text-ink">🤖 Autopilot (company runs itself)</div>
+            <p className="text-[11px] text-muted">
+              ON karne pe: failed workflows khud replan honge, paise cap ke andar rahenge.
+              Approval wale kaam hamesha rukenge — autopilot kabhi approval bypass nahi karta.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-ink">
+              <input type="checkbox" checked={apEnabled} onChange={(e) => setApEnabled(e.target.checked)} />
+              Autopilot enabled
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink">
+              <input type="checkbox" checked={apReplan} onChange={(e) => setApReplan(e.target.checked)} />
+              Failed workflows auto-replan (ek baar, approval wale plans gated rahenge)
+            </label>
+            <div className="flex items-center gap-2 text-xs text-ink">
+              <span className="text-muted">Monthly spend cap (₹):</span>
+              <input
+                type="number" min={0} value={apCap}
+                onChange={(e) => setApCap(Number(e.target.value) || 0)}
+                className="w-32 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-ink"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveAutopilot}
+              disabled={savingAp}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-ink border border-white/10 text-xs font-medium disabled:opacity-50"
+            >
+              {savingAp ? "Saving…" : "Save Autopilot"}
             </button>
           </div>
 

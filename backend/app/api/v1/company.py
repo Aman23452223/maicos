@@ -409,6 +409,107 @@ def team(p: Principal = Depends(get_current_principal),
             for u in rows]
 
 
+class AutopilotIn(BaseModel):
+    enabled: bool = False
+    max_spend_month: int = 0
+    auto_channels: list[str] = []
+    auto_invoice_below: int = 0
+    auto_replan: bool = False
+
+
+@router.get("/company/autopilot")
+def get_autopilot(p: Principal = Depends(get_current_principal),
+                  db: Session = Depends(get_db)):
+    from app.policy.risk import autopilot
+    return autopilot(db, company_id=p.workspace_id)
+
+
+@router.put("/company/autopilot")
+def put_autopilot(payload: AutopilotIn,
+                  p: Principal = Depends(require_role("admin", "owner")),
+                  db: Session = Depends(get_db)):
+    from app.intel.service import get_or_create_profile
+    from app.models.orm import Company
+
+    bp = get_or_create_profile(db, company_id=p.workspace_id)
+    co = db.get(Company, p.workspace_id)
+    cfg = dict((co.config or {}) if co else {})
+    data = payload.model_dump()
+    data["auto_channels"] = [str(c).lower() for c in data.get("auto_channels", [])
+                             if str(c).lower() in ("email", "whatsapp")]
+    cfg["autopilot"] = data
+    if co is not None:
+        co.config = cfg
+    # Mirror channels into comms auto-approve so sends obey one switch.
+    comms = dict(bp.comms_policy or {})
+    comms["auto_approve"] = data["auto_channels"]
+    bp.comms_policy = comms
+    record(db, company_id=p.workspace_id, actor=p.user_id, action="autopilot.updated",
+           target_type="workspace", target_id=p.workspace_id, details=data)
+    db.commit()
+    return {"ok": True, **data}
+
+
+@router.post("/company/collections/run")
+def collections_run(p: Principal = Depends(get_current_principal),
+                    db: Session = Depends(get_db)):
+    """Money collection: overdue invoices -> reminders; old ones escalate."""
+    from datetime import UTC, datetime
+
+    from app.models.orm import CompanySignal
+
+    from app.agents.implementations.finance import _invoices_for
+
+    now = datetime.now(UTC)
+    created, escalated = 0, 0
+    for inv in _invoices_for(p.workspace_id):
+        if inv.get("status") == "PAID":
+            continue
+        try:
+            due = datetime.fromisoformat(inv["due_at"])
+        except Exception:
+            continue
+        days = (now - due).days
+        if days <= 0:
+            continue
+        if days > 7:
+            exists = db.query(CompanySignal).filter(
+                CompanySignal.company_id == p.workspace_id,
+                CompanySignal.title == f"Overdue: {inv.get('customer')}",
+                CompanySignal.status == "open").first()
+            if not exists:
+                db.add(CompanySignal(
+                    company_id=p.workspace_id, kind="issue", severity="high",
+                    title=f"Overdue: {inv.get('customer')}",
+                    detail=f"${inv.get('amount', 0)} overdue {days} days. Escalated."))
+                escalated += 1
+        else:
+            created += 1
+    record(db, company_id=p.workspace_id, actor=p.user_id, action="collections.run",
+           target_type="workspace", target_id=p.workspace_id,
+           details={"remind": created, "escalated": escalated})
+    db.commit()
+    return {"remind_due": created, "escalated": escalated,
+            "note": "Run 'Handle overdue invoice follow-ups' to send the reminders."}
+
+
+@router.post("/company/digest/schedule")
+def digest_schedule(payload: dict,
+                    p: Principal = Depends(get_current_principal),
+                    db: Session = Depends(get_db)):
+    """Schedule the morning briefing daily (uses existing scheduler)."""
+    from app.orchestrator import schedule as schedule_wf
+
+    run_at = str(payload.get("run_at", ""))
+    if not run_at:
+        from datetime import UTC, datetime, timedelta
+        run_at = (datetime.now(UTC) + timedelta(days=1)).replace(
+            hour=3, minute=30, second=0, microsecond=0).isoformat()
+    return schedule_wf(db, principal=p,
+                       objective="Send the morning business digest.",
+                       run_at_iso=run_at)
+
+
 @router.get("/company/events")
 def list_events(type: str | None = None, limit: int = 50,
                 p: Principal = Depends(get_current_principal),

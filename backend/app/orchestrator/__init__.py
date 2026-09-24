@@ -226,13 +226,46 @@ def handle_objective(
                       "intent": plan.get("intent")})
     except Exception:
         pass
+    auto_replanned: str | None = None
+    # Self-healing: FAILED workflows auto-replan once when the owner enabled
+    # it. Depth-guarded (no chains) and approval-gated plans stay gated.
+    try:
+        from app.policy.risk import autopilot
+
+        pol = autopilot(db, company_id=principal.workspace_id)
+        if (pol.get("enabled") and pol.get("auto_replan")
+                and wf.state.value == "FAILED"
+                and not (plan.get("parent_workflow_id"))):
+            failed = [f"{t.agent_name}:{t.title}" for t in wf.tasks
+                      if t.state.value == "FAILED"][:5]
+            child_plan = _build_plan(
+                f"{wf.objective}\n[Auto-replan: avoid these failures: "
+                f"{'; '.join(failed)}]")
+            from app.workflow.engine import create_workflow as _create
+
+            child = _create(
+                db, company_id=principal.workspace_id,
+                triggered_by_user_id=principal.user_id,
+                conversation_id=conversation_id,
+                title=f"auto-replan: {plan.get('intent', 'workflow')}",
+                objective=wf.objective, plan={**child_plan,
+                                              "parent_workflow_id": wf.id})
+            auto_replanned = child.id
+            record(db, company_id=principal.workspace_id, actor="autopilot",
+                   action="workflow.auto_replanned", target_type="workflow",
+                   target_id=child.id, details={"parent": wf.id})
+    except Exception:
+        pass
     db.commit()
-    return {
+    out: dict = {
         "workflow_id": wf.id,
         "state": wf.state.value,
         "plan": plan,
         "tasks": _workflow_summary(wf),
     }
+    if auto_replanned:
+        out["auto_replanned"] = auto_replanned
+    return out
 
 
 def schedule(

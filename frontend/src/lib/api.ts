@@ -325,6 +325,25 @@ export const api = {
     request<{ id: string; name: string; role: string; status: string; current: boolean }[]>(
       "/v1/workspaces",
     ),
+  getAutopilot: () =>
+    request<{ enabled: boolean; max_spend_month: number; auto_channels: string[]; auto_replan: boolean }>(
+      "/v1/company/autopilot",
+    ),
+  putAutopilot: (p: { enabled: boolean; max_spend_month: number; auto_channels: string[]; auto_invoice_below: number; auto_replan: boolean }) =>
+    request<{ ok: boolean }>("/v1/company/autopilot", {
+      method: "PUT",
+      body: JSON.stringify(p),
+    }),
+  scheduleDigest: () =>
+    request<{ job_id: string }>("/v1/company/digest/schedule", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  runCollections: () =>
+    request<{ remind_due: number; escalated: number; note: string }>(
+      "/v1/company/collections/run",
+      { method: "POST" },
+    ),
   team: () =>
     request<{ id: string; name: string; email: string; roles: string[] }[]>(
       "/v1/company/team",

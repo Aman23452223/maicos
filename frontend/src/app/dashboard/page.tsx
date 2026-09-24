@@ -48,6 +48,35 @@ export default function DashboardPage() {
         {stat("Pending approvals", String(approvals?.length ?? "—"), "/approvals")}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={async () => {
+            try {
+              await api.scheduleDigest();
+              alert("Daily morning digest scheduled.");
+            } catch (e) {
+              alert((e as Error).message);
+            }
+          }}
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs hover:bg-white/10"
+        >
+          📬 Schedule daily digest
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              const r = await api.runCollections();
+              alert(`Collections: ${r.remind_due} reminders due, ${r.escalated} escalated. ${r.note}`);
+            } catch (e) {
+              alert((e as Error).message);
+            }
+          }}
+          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs hover:bg-white/10"
+        >
+          💰 Run collections check
+        </button>
+      </div>
+
       {insights.length > 0 && (
         <div className="p-5 rounded-2xl bg-warn/5 border border-warn/20 space-y-1.5">
           <div className="text-xs font-semibold text-ink">🔔 Needs attention</div>
