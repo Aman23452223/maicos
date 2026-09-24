@@ -40,6 +40,14 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "TEAM",
+    items: [
+      { href: "/tasks", label: "My Tasks", icon: "✅" },
+      { href: "/pipeline", label: "Pipeline", icon: "📊" },
+      { href: "/inbox", label: "Inbox", icon: "💬" },
+    ],
+  },
+  {
     title: "GROWTH",
     items: [
       { href: "/business", label: "Business Profile", icon: "🏢" },

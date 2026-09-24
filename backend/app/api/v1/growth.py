@@ -204,6 +204,39 @@ def create_opp(payload: dict, p: Principal = Depends(get_current_principal),
     return {"id": o.id, "stage": o.stage}
 
 
+@router.get("/opportunities")
+def list_opps(stage: str | None = None, limit: int = 100,
+              p: Principal = Depends(get_current_principal),
+              db: Session = Depends(get_db)):
+    q = db.query(Opportunity).filter(Opportunity.company_id == p.workspace_id)
+    if stage:
+        q = q.filter(Opportunity.stage == stage)
+    rows = q.order_by(Opportunity.updated_at.desc()).limit(min(max(limit, 1), 200)).all()
+    return [{"id": o.id, "title": o.title, "amount": o.amount, "stage": o.stage,
+             "status": o.status, "lead_id": o.lead_id, "owner": o.owner} for o in rows]
+
+
+@router.patch("/opportunities/{opp_id}")
+def patch_opp(opp_id: str, payload: dict,
+              p: Principal = Depends(get_current_principal),
+              db: Session = Depends(get_db)):
+    o = db.get(Opportunity, opp_id)
+    if not o or o.company_id != p.workspace_id:
+        raise HTTPException(status_code=404, detail="not found")
+    if "stage" in payload:
+        o.stage = str(payload["stage"])[:80]
+    if "status" in payload:
+        if str(payload["status"]) not in ("open", "won", "lost"):
+            raise HTTPException(status_code=400, detail="bad status")
+        o.status = str(payload["status"])
+    if "amount" in payload:
+        o.amount = int(payload["amount"] or 0)
+    if "owner" in payload:
+        o.owner = str(payload["owner"])[:120] if payload["owner"] else None
+    db.commit()
+    return {"id": o.id, "stage": o.stage, "status": o.status}
+
+
 @router.post("/proposals")
 def make_proposal(payload: ProposalIn, p: Principal = Depends(get_current_principal),
                   db: Session = Depends(get_db)):
@@ -303,6 +336,69 @@ def insights(p: Principal = Depends(get_current_principal),
                     "message": f"{old_tasks} task(s) pending over 24h.",
                     "action": "Resume or replan their workflows."})
     return {"type": "actual", "insights": out}
+
+
+@router.get("/inbox")
+def inbox(p: Principal = Depends(get_current_principal),
+          db: Session = Depends(get_db)):
+    """Unified support threads from inbound messages (workspace-scoped)."""
+    from app.models.orm import InboundMessage, Lead
+
+    rows = db.query(InboundMessage).filter(
+        InboundMessage.company_id == p.workspace_id).order_by(
+        InboundMessage.created_at.desc()).limit(100).all()
+    threads: dict[str, dict] = {}
+    for m in rows:
+        key = m.lead_id or m.from_address
+        t = threads.setdefault(key, {"lead_id": m.lead_id, "from": m.from_address,
+                                     "channel": m.channel, "messages": []})
+        lead = db.get(Lead, m.lead_id) if m.lead_id else None
+        t["name"] = lead.company_name if lead else m.from_address
+        t["messages"].append({"body": m.body, "classification": m.classification,
+                              "at": m.created_at.isoformat() if m.created_at else None})
+    return list(threads.values())
+
+
+class InboxReplyIn(BaseModel):
+    lead_id: str | None = None
+    to: str = ""
+    body: str = ""
+
+
+@router.post("/inbox/reply")
+def inbox_reply(payload: InboxReplyIn,
+                p: Principal = Depends(get_current_principal),
+                db: Session = Depends(get_db)):
+    """Reply from the inbox. Honors auto-send policy; otherwise 409 with
+    guidance to use the approval-gated Command Center flow."""
+    from app.comms.providers import EMAIL
+    from app.models.orm import CrmActivity, Lead
+
+    if not payload.body.strip():
+        raise HTTPException(status_code=400, detail="body required")
+    to = payload.to.strip()
+    if payload.lead_id:
+        lead = db.get(Lead, payload.lead_id)
+        if not lead or lead.company_id != p.workspace_id:
+            raise HTTPException(status_code=404, detail="lead not found")
+        to = to or (lead.email or "")
+    if not to:
+        raise HTTPException(status_code=400, detail="recipient required")
+    from app.policy.risk import workspace_allows
+    if not workspace_allows(db, company_id=p.workspace_id,
+                            action="send_external_communication", channel="email"):
+        raise HTTPException(
+            status_code=409,
+            detail="auto-send not enabled: enable Email auto-send in Settings, "
+                   "or dispatch via Command Center for approval-gated send")
+    res = EMAIL.send(to=to, subject="Re: your message", body=payload.body)
+    if not res.get("ok"):
+        raise HTTPException(status_code=422, detail=res.get("error") or "send failed")
+    db.add(CrmActivity(company_id=p.workspace_id, lead_id=payload.lead_id,
+                       kind="reply", subject="inbox reply", body=payload.body[:2000],
+                       created_by=p.user_id))
+    db.commit()
+    return {"ok": True, "provider": res.get("provider")}
 
 
 @router.get("/activities")

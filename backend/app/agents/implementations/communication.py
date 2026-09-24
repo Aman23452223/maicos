@@ -95,6 +95,14 @@ class CommunicationAgent:
             return AgentResult(output={"draft": res["data"]})
         if action == "bulk_send":
             return self._bulk_send(task, ctx)
+        if action == "send_digest":
+            from app.company.digest import send_to_owner
+
+            res = send_to_owner(ctx.db, company_id=ctx.principal.workspace_id)
+            if not res.get("ok"):
+                return AgentResult(error=res.get("error") or "digest failed")
+            ctx.db.commit()
+            return AgentResult(output={"digest": "sent", "to": "owner"})
         if action == "send":
             channel = str(task.input.get("channel", "email")).lower()
             if channel not in ("email", "whatsapp"):

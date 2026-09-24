@@ -5,6 +5,9 @@ import { AppShell } from "@/components/AppShell";
 export const metadata = {
   title: "MAICOS — Multi-Agent AI Company OS",
   description: "An AI workforce that runs your company operations.",
+  manifest: "/manifest.json",
+  themeColor: "#07080a",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

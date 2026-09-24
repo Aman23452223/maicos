@@ -47,6 +47,8 @@ INTENTS = {
     "integration_request": ["zomato", "google sheets", "instagram",
                             "order summary", "today's orders", "menu availability"],
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
+    "morning_digest": ["morning digest", "daily digest", "morning report",
+                       "daily summary", "subah ki report"],
     "weekly_review": ["weekly", "report", "pipeline", "analytics", "stuck"],
     "lead_followup": ["follow up", "follow-up", "inactive lead"],
 }
@@ -648,6 +650,20 @@ def _plan_weekly_review(objective: str) -> dict[str, Any]:
     return weekly_review()
 
 
+def _plan_morning_digest(objective: str) -> dict[str, Any]:
+    return {
+        "intent": "morning_digest",
+        "tasks": [{
+            "id": "digest",
+            "agent": "communication",
+            "title": "Send morning digest",
+            "description": objective,
+            "input": {"action": "send_digest"},
+            "depends_on": [],
+        }],
+    }
+
+
 def build_plan(objective: str) -> dict[str, Any]:
     intent = classify(objective)
     if intent == "onboard_client":
@@ -682,6 +698,8 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_lead_outreach(objective)
     if intent == "weekly_review":
         return _plan_weekly_review(objective)
+    if intent == "morning_digest":
+        return _plan_morning_digest(objective)
     if intent == "lead_followup":
         return _plan_lead_followup(objective)
     if intent == "invoice_followup":

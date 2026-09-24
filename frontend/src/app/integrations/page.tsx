@@ -62,6 +62,21 @@ const SETUP_GUIDE: Record<string, { steps: string[]; fields: { key: string; labe
     steps: ["zomato.com/partners pe partner account se API access lo", "Key mile to yaha paste karo", "Note: bina official partner API ke status 'Configuration required' rahega"],
     fields: [{ key: "ZOMATO_API_KEY", label: "Zomato API Key", placeholder: "zomato key" }],
   },
+  voice_twilio: {
+    steps: ["twilio.com pe signup karo", "Account SID + Auth Token copy karo (Console)", "Ek Twilio phone number lo", "Teeno yaha paste karo"],
+    fields: [
+      { key: "TWILIO_ACCOUNT_SID", label: "Account SID", placeholder: "AC..." },
+      { key: "TWILIO_AUTH_TOKEN", label: "Auth Token", placeholder: "..." },
+      { key: "TWILIO_FROM_NUMBER", label: "Twilio Number", placeholder: "+1..." },
+    ],
+  },
+  payments_razorpay: {
+    steps: ["dashboard.razorpay.com pe login karo", "Settings → API Keys → Generate", "Key ID + Secret yaha paste karo"],
+    fields: [
+      { key: "RAZORPAY_KEY_ID", label: "Key ID", placeholder: "rzp_..." },
+      { key: "RAZORPAY_KEY_SECRET", label: "Key Secret", placeholder: "..." },
+    ],
+  },
 };
 
 export default function IntegrationsPage() {

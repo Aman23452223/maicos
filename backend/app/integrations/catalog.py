@@ -92,6 +92,23 @@ CATALOG: list[dict[str, Any]] = [
         "actions": ["search"],
     },
     {
+        "provider": "voice_twilio",
+        "name": "Voice (Twilio)",
+        "description": "Outbound calls that speak a message. Approval required.",
+        "auth_type": "api_key",
+        "required_envs": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
+                          "TWILIO_FROM_NUMBER"],
+        "actions": ["initiate_call", "call_status"],
+    },
+    {
+        "provider": "payments_razorpay",
+        "name": "Razorpay",
+        "description": "Payment links + verification (key id + secret).",
+        "auth_type": "api_key",
+        "required_envs": ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"],
+        "actions": ["create_link", "check_status"],
+    },
+    {
         "provider": "github",
         "name": "GitHub",
         "description": "Repository read + pull requests + AI code PRs (scoped token).",
@@ -213,5 +230,25 @@ def execute_action(provider: str, action: str, payload: dict,
         return {"ok": res.ok, "status": res.status,
                 "prospects": [vars(p) for p in res.prospects],
                 "message": res.message}
+    if provider == "voice_twilio":
+        from app.voice import providers as voice
+
+        if action == "initiate_call":
+            return voice.initiate_call(to=str(payload.get("to", "")),
+                                       message=str(payload.get("message", "")))
+        if action == "call_status":
+            return voice.call_status(str(payload.get("call_sid", "")))
+    if provider == "payments_razorpay":
+        from app.pay import providers as pay
+
+        if action == "create_link":
+            return pay.create_razorpay_link(
+                amount_paise=int(payload.get("amount_paise") or 0),
+                description=str(payload.get("description", "")),
+                customer={"name": payload.get("customer_name", ""),
+                          "contact": payload.get("customer_phone", ""),
+                          "email": payload.get("customer_email", "")})
+        if action == "check_status":
+            return pay.razorpay_link_status(str(payload.get("link_id", "")))
     return {"ok": False, "status": "PROVIDER_ERROR",
             "error": f"{provider}.{action} executor not wired; credential verified only"}

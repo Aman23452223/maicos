@@ -325,6 +325,42 @@ export const api = {
     request<{ id: string; name: string; role: string; status: string; current: boolean }[]>(
       "/v1/workspaces",
     ),
+  team: () =>
+    request<{ id: string; name: string; email: string; roles: string[] }[]>(
+      "/v1/company/team",
+    ),
+  createStaffTask: (title: string, assignee_user_id?: string) =>
+    request<{ id: string }>("/v1/company/tasks", {
+      method: "POST",
+      body: JSON.stringify({ title, assignee_user_id }),
+    }),
+  myTasks: () =>
+    request<{ id: string; title: string; state: string; project_id: string; due_at: string | null }[]>(
+      "/v1/company/tasks/mine",
+    ),
+  staffTaskState: (id: string, state: string) =>
+    request<{ ok: boolean }>(`/v1/company/tasks/${id}/state`, {
+      method: "POST",
+      body: JSON.stringify({ state }),
+    }),
+  listOpps: () =>
+    request<{ id: string; title: string; amount: number; stage: string; status: string; lead_id: string | null }[]>(
+      "/v1/opportunities",
+    ),
+  patchOpp: (id: string, patch: { stage?: string; status?: string }) =>
+    request<{ id: string; stage: string; status: string }>(`/v1/opportunities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  inbox: () =>
+    request<{ lead_id: string | null; from: string; name: string; channel: string; messages: { body: string; classification: string; at: string | null }[] }[]>(
+      "/v1/inbox",
+    ),
+  inboxReply: (lead_id: string | null, to: string, body: string) =>
+    request<{ ok: boolean }>("/v1/inbox/reply", {
+      method: "POST",
+      body: JSON.stringify({ lead_id, to, body }),
+    }),
   switchWorkspace: (workspace_id: string) =>
     request<{ access_token: string }>("/v1/auth/switch", {
       method: "POST",

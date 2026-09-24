@@ -1,0 +1,10 @@
+{
+  "name": "MAICOS — AI Company OS",
+  "short_name": "MAICOS",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#07080a",
+  "theme_color": "#07080a",
+  "description": "Approve workflows and run your company from your phone.",
+  "icons": []
+}

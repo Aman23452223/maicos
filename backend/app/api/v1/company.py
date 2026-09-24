@@ -311,6 +311,104 @@ def list_projects(p: Principal = Depends(get_current_principal),
              "deadline": r.deadline, "status": r.status} for r in rows]
 
 
+class StaffTaskIn(BaseModel):
+    title: str
+    project_id: str | None = None
+    assignee_user_id: str | None = None
+    due_at: str | None = None
+
+
+@router.post("/company/tasks")
+def create_staff_task(payload: StaffTaskIn,
+                      p: Principal = Depends(get_current_principal),
+                      db: Session = Depends(get_db)):
+    """Assign work to a human teammate (staff sees it in My Tasks)."""
+    from app.models.orm import CompanyTask, User
+
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="title required")
+    project_id = payload.project_id
+    if project_id:
+        from app.models.orm import CompanyProject
+        proj = db.get(CompanyProject, project_id)
+        if not proj or proj.company_id != p.workspace_id:
+            raise HTTPException(status_code=404, detail="project not found")
+    else:
+        from app.models.orm import CompanyProject
+        proj = CompanyProject(company_id=p.workspace_id, name="General")
+        db.add(proj)
+        db.flush()
+        project_id = proj.id
+    if payload.assignee_user_id:
+        u = db.get(User, payload.assignee_user_id)
+        if not u or u.company_id != p.workspace_id:
+            raise HTTPException(status_code=404, detail="teammate not in this workspace")
+    due = None
+    if payload.due_at:
+        try:
+            from datetime import datetime
+            due = datetime.fromisoformat(payload.due_at)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="bad due_at") from exc
+    row = CompanyTask(company_id=p.workspace_id, project_id=project_id,
+                      title=payload.title[:255],
+                      assignee_user_id=payload.assignee_user_id, due_at=due)
+    db.add(row)
+    db.flush()
+    record(db, company_id=p.workspace_id, actor=p.user_id, action="task.assigned",
+           target_type="task", target_id=row.id,
+           details={"assignee": payload.assignee_user_id})
+    db.commit()
+    return {"id": row.id}
+
+
+@router.get("/company/tasks/mine")
+def my_tasks(p: Principal = Depends(get_current_principal),
+             db: Session = Depends(get_db)):
+    from app.models.orm import CompanyTask
+
+    rows = db.query(CompanyTask).filter(
+        CompanyTask.company_id == p.workspace_id,
+        CompanyTask.assignee_user_id == p.user_id).order_by(
+        CompanyTask.created_at.desc()).limit(100).all()
+    return [{"id": r.id, "title": r.title, "state": r.state,
+             "project_id": r.project_id,
+             "due_at": r.due_at.isoformat() if r.due_at else None} for r in rows]
+
+
+@router.post("/company/tasks/{task_id}/state")
+def staff_task_state(task_id: str, payload: dict,
+                     p: Principal = Depends(get_current_principal),
+                     db: Session = Depends(get_db)):
+    from app.models.orm import CompanyTask
+
+    row = db.get(CompanyTask, task_id)
+    if not row or row.company_id != p.workspace_id:
+        raise HTTPException(status_code=404, detail="not found")
+    # Only assignee, admin or owner may update.
+    if row.assignee_user_id and row.assignee_user_id != p.user_id \
+            and "owner" not in p.roles and "admin" not in p.roles:
+        raise HTTPException(status_code=403, detail="not your task")
+    state = str(payload.get("state", "")).upper()
+    if state not in ("PENDING", "RUNNING", "COMPLETED", "FAILED"):
+        raise HTTPException(status_code=400, detail="bad state")
+    row.state = state
+    db.commit()
+    return {"ok": True, "state": row.state}
+
+
+@router.get("/company/team")
+def team(p: Principal = Depends(get_current_principal),
+         db: Session = Depends(get_db)):
+    """Human teammates of this workspace (for assignment dropdowns)."""
+    from app.models.orm import User
+
+    rows = db.query(User).filter(User.company_id == p.workspace_id,
+                                 User.is_active.is_(True)).all()
+    return [{"id": u.id, "name": u.name, "email": u.email, "roles": u.roles or []}
+            for u in rows]
+
+
 @router.get("/company/events")
 def list_events(type: str | None = None, limit: int = 50,
                 p: Principal = Depends(get_current_principal),
