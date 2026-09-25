@@ -215,7 +215,23 @@ function WorkflowDetailView({
   const { data: tasks, mutate } = useSWR(`tasks-${workflow.id}`, () =>
     api.listTasks(workflow.id)
   );
+  const { data: runs } = useSWR(`runs-${workflow.id}`, () => api.listRuns(workflow.id));
   const [resuming, setResuming] = useState(false);
+
+  function stepsFor(taskId: string): string[] {
+    const out: string[] = [];
+    for (const r of runs || []) {
+      if (r.task_id !== taskId) continue;
+      for (const s of r.steps || []) {
+        if (s.connector && s.operation) {
+          out.push(`${s.connector}.${s.operation} ${s.ok === false ? "✕" : "✓"}`);
+        } else if (s.type) {
+          out.push(String(s.type));
+        }
+      }
+    }
+    return out.slice(0, 8);
+  }
 
   async function handleResume() {
     setResuming(true);
@@ -283,6 +299,13 @@ function WorkflowDetailView({
               <div className="text-[11px] text-accent font-mono">
                 🤖 {t.agent_name}
               </div>
+              {stepsFor(t.id).length > 0 && (
+                <div className="text-[10px] text-muted font-mono space-y-0.5 mt-1">
+                  {stepsFor(t.id).map((s, i) => (
+                    <div key={i}>→ {s}</div>
+                  ))}
+                </div>
+              )}
               {t.error && <p className="text-[11px] text-bad mt-1">{t.error}</p>}
             </div>
           ))}

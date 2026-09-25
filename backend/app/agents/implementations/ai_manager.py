@@ -49,6 +49,9 @@ INTENTS = {
     "lead_outreach": ["contact", "outreach", "send proposal", "prepare outreach"],
     "morning_digest": ["morning digest", "daily digest", "morning report",
                        "daily summary", "subah ki report"],
+    "concierge": ["book hotel", "book flight", "book tickets", "book movie",
+                  "order food", "hotel book", "flight book", "order pizza",
+                  "book a hotel", "book a flight", "order ", "book "],
     "weekly_review": ["weekly", "report", "pipeline", "analytics", "stuck"],
     "lead_followup": ["follow up", "follow-up", "inactive lead"],
 }
@@ -650,6 +653,38 @@ def _plan_weekly_review(objective: str) -> dict[str, Any]:
     return weekly_review()
 
 
+def _plan_concierge(objective: str) -> dict[str, Any]:
+    """Do-the-legwork tasks: research options -> rank -> handoff summary.
+
+    Honest boundary: MAICOS researches, compares and prepares booking
+    links, but payment/booking on third-party sites is completed by the
+    user (no stored personal logins, no fake bookings).
+    """
+    return {
+        "intent": "concierge",
+        "tasks": [
+            {"id": "research", "agent": "sales_crm",
+             "title": "Research options",
+             "description": f"Find options for: {objective}",
+             "input": {"action": "discover", "objective": objective,
+                       "auto_import": True, "limit": 10},
+             "depends_on": []},
+            {"id": "compare", "agent": "sales_crm",
+             "title": "Compare and rank",
+             "description": "Enrich and score the options found.",
+             "input": {"action": "qualify_batch", "objective": objective},
+             "depends_on": ["research"]},
+            {"id": "handoff", "agent": "communication",
+             "title": "Prepare booking handoff",
+             "description": (f"Ranked options with links for: {objective}. "
+                             "User completes booking/payment themselves."),
+             "input": {"action": "draft", "subject": "Your options",
+                       "body": objective},
+             "depends_on": ["compare"]},
+        ],
+    }
+
+
 def _plan_morning_digest(objective: str) -> dict[str, Any]:
     return {
         "intent": "morning_digest",
@@ -700,6 +735,8 @@ def build_plan(objective: str) -> dict[str, Any]:
         return _plan_weekly_review(objective)
     if intent == "morning_digest":
         return _plan_morning_digest(objective)
+    if intent == "concierge":
+        return _plan_concierge(objective)
     if intent == "lead_followup":
         return _plan_lead_followup(objective)
     if intent == "invoice_followup":

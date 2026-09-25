@@ -239,6 +239,33 @@ def replan(
     return get_workflow(result["workflow_id"], p, db)
 
 
+@router.get("/workflows/{workflow_id}/runs")
+def list_runs(
+    workflow_id: str,
+    p: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Live execution steps per task (Instinct-style progress: what the
+    worker is doing right now). Steps come from persisted agent run logs."""
+    from app.models.orm import AgentRun, Task
+
+    wf = db.get(Workflow, workflow_id)
+    if not wf or wf.company_id != p.workspace_id:
+        raise HTTPException(status_code=404, detail="workflow not found")
+    task_ids = [t.id for t in wf.tasks]
+    if not task_ids:
+        return []
+    rows = db.query(AgentRun).filter(AgentRun.task_id.in_(task_ids)).order_by(
+        AgentRun.started_at.asc()).all()
+    return [{
+        "task_id": r.task_id, "agent": r.agent_name,
+        "steps": r.steps or [], "tool_calls": r.tool_calls or [],
+        "output_keys": sorted((r.output or {}).keys()),
+        "error": r.error,
+        "finished": bool(r.finished_at),
+    } for r in rows]
+
+
 @router.post("/workflows/{workflow_id}/resume", response_model=WorkflowOut)
 def resume(
     workflow_id: str,

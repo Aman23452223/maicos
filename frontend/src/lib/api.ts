@@ -87,6 +87,12 @@ export const api = {
     request<Workflow[]>(`/v1/workflows${state ? `?state=${state}` : ""}`),
   getWorkflow: (id: string) => request<Workflow>(`/v1/workflows/${id}`),
   listTasks: (id: string) => request<WorkflowTask[]>(`/v1/workflows/${id}/tasks`),
+  listRuns: (id: string) =>
+    request<{
+      task_id: string; agent: string;
+      steps: { type?: string; connector?: string; operation?: string; ok?: boolean }[];
+      tool_calls: unknown[]; output_keys: string[]; error: string | null; finished: boolean;
+    }[]>(`/v1/workflows/${id}/runs`),
   resume: (id: string) =>
     request<Workflow>(`/v1/workflows/${id}/resume`, { method: "POST" }),
   listApprovals: (status?: string) =>
