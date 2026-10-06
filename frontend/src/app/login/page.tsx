@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export default function LoginPage() {
         await signInWithPassword(cleanEmail, password);
         router.push("/command");
       } else if (mode === "signup") {
-        await signUp(cleanEmail, password, name.trim() || undefined);
+        await signUp(cleanEmail, password, name.trim() || undefined, company.trim() || undefined);
         router.push("/command");
       } else if (mode === "magic") {
         await signInWithOtp(cleanEmail);
@@ -189,6 +190,21 @@ export default function LoginPage() {
                 placeholder="Aman Chawhan"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
+
+          {mode === "signup" && (
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">
+                Company / Workspace Name
+              </label>
+              <input
+                type="text"
+                placeholder="Acme Inc"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent"
               />
             </div>

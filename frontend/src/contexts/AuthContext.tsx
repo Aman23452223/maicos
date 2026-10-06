@@ -45,7 +45,7 @@ type AuthContextType = {
   openAuthModal: (mode?: "signin" | "signup") => void;
   closeAuthModal: () => void;
   signInWithPassword: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name?: string) => Promise<void>;
+  signUp: (email: string, password: string, name?: string, company_name?: string) => Promise<void>;
   signInWithOtp: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -244,7 +244,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signUp = useCallback(
-    async (email: string, password: string, name?: string) => {
+    async (email: string, password: string, name?: string, company_name?: string) => {
       const cleanEmail = email.trim().toLowerCase();
       if (!cleanEmail || !cleanEmail.includes("@")) {
         throw new Error("Please enter a valid email address");
@@ -276,7 +276,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
       // 2. Register natively in MAICOS database to guarantee instant JWT & workspace
       try {
-        const res = await api.register(cleanEmail, password, name);
+        const res = await api.register(cleanEmail, password, name, company_name);
         if (res.access_token) {
           setToken(res.access_token);
           setTokenState(res.access_token);
