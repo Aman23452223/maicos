@@ -20,6 +20,21 @@ from app.workflow.engine import run as run_workflow
 router = APIRouter(tags=["workflow"])
 
 
+def _worker_available() -> bool:
+    """Run agent work on the worker instead of inside the HTTP request.
+
+    Objectives that discover/qualify leads call out to search + website
+    crawling, which can take minutes. Doing that inline makes the browser
+    request time out, so hand it to the background worker when one is on.
+    """
+    try:
+        from app.core.config import get_settings
+
+        return bool(get_settings().worker_enabled)
+    except Exception:
+        return False
+
+
 @router.post("/commands", response_model=WorkflowOut)
 def submit_command(
     payload: CommandIn,
@@ -41,6 +56,7 @@ def submit_command(
     result = handle_objective(
         db, principal=p, objective=payload.objective, conversation_id=conv_id,
         plan_review=bool(payload.plan_review),
+        enqueue_async=_worker_available(),
     )
     wf = db.get(Workflow, result["workflow_id"])
     if not wf:

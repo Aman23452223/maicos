@@ -7,6 +7,10 @@ from app.agents.base import AgentContext, AgentResult, AgentTask
 from app.agents.registry import register
 from app.agents.runtime import call_tool
 
+# Enrichment does a live website fetch per lead (~15s timeout each), so the
+# batch size is bounded to keep a single workflow run predictable.
+ENRICH_BATCH_LIMIT = 10
+
 
 class SalesCRMAgent:
     name = "sales_crm"
@@ -187,6 +191,25 @@ class SalesCRMAgent:
             return AgentResult(output=out)
         if action in ("enrich",):
             lid = str(task.input.get("lead_id", ""))
+            if not lid:
+                # Stage-level run (no single lead in scope): enrich every NEW
+                # lead in the workspace instead of failing the whole workflow.
+                from app.models.orm import Lead, LeadStatus
+
+                rows = ctx.db.query(Lead).filter(
+                    Lead.company_id == ws, Lead.status == LeadStatus.NEW
+                ).limit(10).all()
+                done, failed = 0, 0
+                for lead in rows:
+                    r = enrich_lead(ctx.db, company_id=ws, lead_id=lead.id,
+                                    actor="sales_crm")
+                    if r.get("ok"):
+                        done += 1
+                    else:
+                        failed += 1
+                ctx.db.commit()
+                return AgentResult(output={"enriched": done, "failed": failed,
+                                           "batch": True})
             out = enrich_lead(ctx.db, company_id=ws, lead_id=lid, actor="sales_crm")
             if not out.get("ok"):
                 return AgentResult(error=out.get("error") or "enrich failed")
@@ -194,6 +217,26 @@ class SalesCRMAgent:
             return AgentResult(output=out)
         if action in ("qualify", "score", "deduplicate"):
             lid = str(task.input.get("lead_id", ""))
+            if not lid:
+                # Stage-level run: score every lead still in play.
+                from app.models.orm import Lead, LeadStatus
+
+                rows = ctx.db.query(Lead).filter(
+                    Lead.company_id == ws,
+                    Lead.status.notin_([LeadStatus.DISQUALIFIED, LeadStatus.LOST]),
+                ).limit(50).all()
+                done, failed = 0, 0
+                for lead in rows:
+                    r = qualify_lead(ctx.db, company_id=ws, lead_id=lead.id,
+                                     actor="sales_crm",
+                                     threshold=int(task.input.get("threshold", 60)))
+                    if r.get("ok"):
+                        done += 1
+                    else:
+                        failed += 1
+                ctx.db.commit()
+                return AgentResult(output={"qualified": done, "failed": failed,
+                                           "batch": True})
             out = qualify_lead(ctx.db, company_id=ws, lead_id=lid, actor="sales_crm",
                                threshold=int(task.input.get("threshold", 60)))
             if not out.get("ok"):

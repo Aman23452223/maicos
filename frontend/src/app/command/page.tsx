@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Workflow, WorkflowTask } from "@/lib/types";
 
+const TERMINAL_STATES = new Set([
+  "COMPLETED",
+  "PARTIAL",
+  "FAILED",
+  "CANCELLED",
+  "WAITING_APPROVAL",
+  "WAITING_INPUT",
+]);
+
 const QUICK_PROMPTS = [
   "Onboard the new client ABC with full billing setup and welcome checklist.",
-  "Find potential restaurant clients in Nagpur, qualify them and add to CRM.",
+  "Find qualified B2B prospects for our offering and add them to the CRM.",
   "Analyze website https://example.com and tell me services and target customers.",
   "Follow up with all qualified leads that have not responded in 5 days.",
   "Generate weekly business report with pipeline and stuck leads.",
@@ -27,6 +36,21 @@ export default function CommandPage() {
   const [attached, setAttached] = useState<string[]>([]);
   const [attaching, setAttaching] = useState(false);
   const [planReview, setPlanReview] = useState(false);
+  // Never advertise a model that is not actually configured — the backend
+  // falls back to the deterministic planner when no LLM provider is set up.
+  const [modelLabel, setModelLabel] = useState<string>("checking…");
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((s) => {
+        if (s.openrouter_configured) setModelLabel(s.llm_default_model);
+        else if (s.openai_configured) setModelLabel("OpenAI (configured)");
+        else if (s.anthropic_configured) setModelLabel("Anthropic (configured)");
+        else setModelLabel("no LLM configured — rule-based planner");
+      })
+      .catch(() => setModelLabel("model status unavailable"));
+  }, []);
 
   async function handleAttach(f: File) {
     if (!user) {
@@ -41,6 +65,25 @@ export default function CommandPage() {
       setErr((e as Error).message);
     } finally {
       setAttaching(false);
+    }
+  }
+
+  // Workflows run on the background worker, so poll until the run settles.
+  async function pollWorkflow(id: string, ms = 150000) {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2500));
+      try {
+        const [w, ts] = await Promise.all([
+          api.getWorkflow(id),
+          api.listTasks(id),
+        ]);
+        setWf(w);
+        setTasks(ts);
+        if (TERMINAL_STATES.has(w.state)) return;
+      } catch {
+        return;
+      }
     }
   }
 
@@ -64,6 +107,7 @@ export default function CommandPage() {
       setWf(w);
       const ts = await api.listTasks(w.id);
       setTasks(ts);
+      if (!TERMINAL_STATES.has(w.state)) await pollWorkflow(w.id);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -75,10 +119,11 @@ export default function CommandPage() {
     if (!wf) return;
     setBusy(true);
     try {
-      const w = await api.resume(wf.id);
+const w = await api.resume(wf.id);
       setWf(w);
-      const ts = await api.listTasks(w.id);
+      const ts = await api.listTasks(wf.id);
       setTasks(ts);
+      if (!TERMINAL_STATES.has(w.state)) await pollWorkflow(wf.id);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -130,7 +175,7 @@ export default function CommandPage() {
                 <span>Objective Formulation</span>
               </span>
               <span className="text-[11px] text-muted font-mono">
-                Model: Minimax / GPT-4o
+                Model: {modelLabel}
               </span>
             </div>
 

@@ -13,10 +13,15 @@ def lead_generation(stages: list[str] | None = None) -> dict[str, Any]:
                  "score": "sales_crm", "crm": "sales_crm", "report": "analytics"}
     for i, s in enumerate(stages):
         tid = f"{s}_{i}"
+        inp: dict[str, Any] = {"action": s}
+        # Discover must persist prospects as leads, otherwise every later
+        # stage has nothing to act on and the workflow dead-ends.
+        if s == "discover":
+            inp["auto_import"] = True
         tasks.append({"id": tid, "agent": agent_for.get(s, "sales_crm"),
                       "title": s.replace("_", " ").title(),
                       "description": f"Stage: {s}",
-                      "input": {"action": s}, "depends_on": [prev] if prev else []})
+                      "input": inp, "depends_on": [prev] if prev else []})
         prev = tid
     return {"intent": "lead_generation", "tasks": tasks}
 
