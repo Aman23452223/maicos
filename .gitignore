@@ -33,3 +33,5 @@ var/
 *.key
 service-account*.json
 gha-*.json
+.vercel
+.env*
