@@ -8,7 +8,7 @@ const nextConfig = {
     // backend (e.g. http://localhost:8000 for local dev).
     const api =
       process.env.NEXT_PUBLIC_API_URL ||
-      "https://maicos-production.up.railway.app";
+      "https://maicos-production-7d91.up.railway.app";
     return [{ source: "/api/:path*", destination: `${api}/api/:path*` }];
   },
 };

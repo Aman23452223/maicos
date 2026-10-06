@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://maicos-production.up.railway.app/api/$1"
+      "destination": "https://maicos-production-7d91.up.railway.app/api/$1"
     }
   ],
   "headers": [
