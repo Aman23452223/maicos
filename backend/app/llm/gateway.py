@@ -108,21 +108,32 @@ class OpenRouterClient(OpenAIClient):
 
 
 class DeepSeekClient(OpenAIClient):
-    """OpenAI-compatible client pointed at DeepSeek.
+    """OpenAI-compatible client for DeepSeek models.
 
-    Uses the `deepseek-chat` model. Supports the same Chat Completions
-    surface (including JSON mode) as OpenAI.
+    Works against DeepSeek directly (https://api.deepseek.com) AND against
+    OpenAI-compatible gateways such as TokenHarbor: set DEEPSEEK_BASE_URL
+    (e.g. https://tokenharbor.ai/v1) and DEEPSEEK_MODEL accordingly
+    (e.g. deepseek-v3.2 on TokenHarbor, deepseek-chat on DeepSeek direct).
     """
 
     DEEPSEEK_BASE = "https://api.deepseek.com"
     DEFAULT_MODEL = "deepseek-chat"
 
     def __init__(self, default_model: str) -> None:
-        # A model id from another provider (e.g. an OpenRouter "a/b:free"
-        # id) is not valid on DeepSeek — fall back to deepseek-chat.
+        import os
+
+        from app.core.config import get_settings
+
+        base = (os.environ.get("DEEPSEEK_BASE_URL") or "").strip() or self.DEEPSEEK_BASE
         if not default_model or "/" in default_model:
-            default_model = self.DEFAULT_MODEL
-        super().__init__(default_model, base_url=self.DEEPSEEK_BASE)
+            # Not a valid id for this endpoint — use the configured
+            # DeepSeek model instead (DEEPSEEK_MODEL / deepseek-chat).
+            default_model = (
+                (get_settings().deepseek_default_model or "").strip()
+                or os.environ.get("DEEPSEEK_MODEL", "").strip()
+                or self.DEFAULT_MODEL
+            )
+        super().__init__(default_model, base_url=base)
 
     def _sdk(self):  # type: ignore[override]
         if self._client is None:
@@ -181,7 +192,7 @@ def get_llm() -> LLMClient:
     if provider == "openai":
         return OpenAIClient(s.llm_default_model)
     if provider == "deepseek":
-        return DeepSeekClient(s.deepseek_default_model or s.llm_default_model)
+        return DeepSeekClient(s.llm_default_model)
     if provider == "anthropic":
         return AnthropicClient(s.llm_default_model)
     # Fallback so the system boots without config.
