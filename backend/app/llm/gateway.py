@@ -149,7 +149,7 @@ class DeepSeekClient(OpenAIClient):
                 )
             self._client = OpenAI(
                 api_key=token,
-                base_url=self.DEEPSEEK_BASE,
+                base_url=self.base_url or self.DEEPSEEK_BASE,
             )
         return self._client
 
