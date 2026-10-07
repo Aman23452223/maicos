@@ -10,6 +10,7 @@ type SettingsOut = {
   openrouter_configured: boolean;
   openai_configured: boolean;
   anthropic_configured: boolean;
+  deepseek_configured: boolean;
 };
 
 async function testSettingsRaw(): Promise<{ ok: boolean; model: string; sample: string }> {
@@ -31,6 +32,7 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState("openrouter");
   const [model, setModel] = useState("minimax/minimax-m3:free");
   const [openrouterKey, setOpenrouterKey] = useState("");
+  const [deepseekKey, setDeepseekKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -125,8 +127,10 @@ export default function SettingsPage() {
         llm_provider: provider,
         llm_default_model: model,
         openrouter_api_key: openrouterKey || undefined,
+        deepseek_api_key: deepseekKey || undefined,
       });
       setOpenrouterKey("");
+      setDeepseekKey("");
       await refresh();
       setMsg("Settings saved successfully.");
     } catch (e) {
@@ -194,7 +198,17 @@ export default function SettingsPage() {
       </div>
 
       {/* Provider Status Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-xl bg-[#0e1217] border border-white/[0.08] flex items-center justify-between">
+          <span className="text-xs text-muted">DeepSeek</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+              s?.deepseek_configured ? "bg-ok/10 text-ok" : "bg-white/5 text-muted"
+            }`}
+          >
+            {s?.deepseek_configured ? "Configured" : "Not Set"}
+          </span>
+        </div>
         <div className="p-3.5 rounded-xl bg-[#0e1217] border border-white/[0.08] flex items-center justify-between">
           <span className="text-xs text-muted">OpenRouter</span>
           <span
@@ -240,6 +254,7 @@ export default function SettingsPage() {
               className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent font-sans"
             >
               <option value="openrouter">OpenRouter (Free & Premium Models)</option>
+              <option value="deepseek">DeepSeek (Direct API)</option>
               <option value="openai">OpenAI (Direct API)</option>
               <option value="anthropic">Anthropic Claude (Direct API)</option>
             </select>
@@ -275,6 +290,22 @@ export default function SettingsPage() {
             />
             <span className="text-[11px] text-muted/60 mt-1 block">
               Leave blank to keep existing configured key. Keys are held in memory only.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1">
+              DeepSeek API Key
+            </label>
+            <input
+              type="password"
+              value={deepseekKey}
+              onChange={(e) => setDeepseekKey(e.target.value)}
+              placeholder={s?.deepseek_configured ? "•••••••••••••••• (configured)" : "sk-..."}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-ink focus:outline-none focus:border-accent font-mono"
+            />
+            <span className="text-[11px] text-muted/60 mt-1 block">
+              Model: <code>deepseek-chat</code>. Leave blank to keep existing configured key.
             </span>
           </div>
 

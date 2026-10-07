@@ -107,6 +107,42 @@ class OpenRouterClient(OpenAIClient):
         return self._client
 
 
+class DeepSeekClient(OpenAIClient):
+    """OpenAI-compatible client pointed at DeepSeek.
+
+    Uses the `deepseek-chat` model. Supports the same Chat Completions
+    surface (including JSON mode) as OpenAI.
+    """
+
+    DEEPSEEK_BASE = "https://api.deepseek.com"
+    DEFAULT_MODEL = "deepseek-chat"
+
+    def __init__(self, default_model: str) -> None:
+        # A model id from another provider (e.g. an OpenRouter "a/b:free"
+        # id) is not valid on DeepSeek — fall back to deepseek-chat.
+        if not default_model or "/" in default_model:
+            default_model = self.DEFAULT_MODEL
+        super().__init__(default_model, base_url=self.DEEPSEEK_BASE)
+
+    def _sdk(self):  # type: ignore[override]
+        if self._client is None:
+            from openai import OpenAI  # type: ignore
+
+            from app.core.secrets import get_secret
+
+            token = get_secret("DEEPSEEK_API_KEY")
+            if not token:
+                raise RuntimeError(
+                    "DEEPSEEK_API_KEY not set. Paste it via the UI (Settings) "
+                    "or set it as an env var / secret. Never commit it."
+                )
+            self._client = OpenAI(
+                api_key=token,
+                base_url=self.DEEPSEEK_BASE,
+            )
+        return self._client
+
+
 class AnthropicClient:
     def __init__(self, default_model: str) -> None:
         self.default_model = default_model
@@ -144,6 +180,8 @@ def get_llm() -> LLMClient:
         return OpenRouterClient(s.llm_default_model)
     if provider == "openai":
         return OpenAIClient(s.llm_default_model)
+    if provider == "deepseek":
+        return DeepSeekClient(s.deepseek_default_model or s.llm_default_model)
     if provider == "anthropic":
         return AnthropicClient(s.llm_default_model)
     # Fallback so the system boots without config.

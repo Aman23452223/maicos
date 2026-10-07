@@ -39,6 +39,8 @@ def get_secret(name: str) -> str | None:
         return settings.anthropic_api_key or None
     if name == "OPENROUTER_API_KEY":
         return settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY") or None
+    if name == "DEEPSEEK_API_KEY":
+        return settings.deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY") or None
     return None
 
 

@@ -23,6 +23,7 @@ class SettingsOut(BaseModel):
     openrouter_configured: bool
     openai_configured: bool
     anthropic_configured: bool
+    deepseek_configured: bool
 
 
 class SettingsUpdate(BaseModel):
@@ -31,6 +32,7 @@ class SettingsUpdate(BaseModel):
     openrouter_api_key: str | None = Field(default=None, min_length=10)
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    deepseek_api_key: str | None = Field(default=None, min_length=10)
 
 
 @router.get("/settings", response_model=SettingsOut)
@@ -46,6 +48,7 @@ def read_settings(
         openrouter_configured=bool(get_secret("OPENROUTER_API_KEY")),
         openai_configured=bool(get_secret("OPENAI_API_KEY")),
         anthropic_configured=bool(get_secret("ANTHROPIC_API_KEY")),
+        deepseek_configured=bool(get_secret("DEEPSEEK_API_KEY")),
     )
 
 
@@ -56,7 +59,7 @@ def update_settings(
     db: Session = Depends(get_db),
 ) -> SettingsOut:
     if payload.llm_provider:
-        if payload.llm_provider not in {"openrouter", "openai", "anthropic"}:
+        if payload.llm_provider not in {"openrouter", "openai", "anthropic", "deepseek"}:
             raise HTTPException(status_code=400, detail="unsupported provider")
         os_environ_update = {"LLM_PROVIDER": payload.llm_provider}
         import os
@@ -70,6 +73,8 @@ def update_settings(
         set_runtime_secret("OPENAI_API_KEY", payload.openai_api_key)
     if payload.anthropic_api_key:
         set_runtime_secret("ANTHROPIC_API_KEY", payload.anthropic_api_key)
+    if payload.deepseek_api_key:
+        set_runtime_secret("DEEPSEEK_API_KEY", payload.deepseek_api_key)
     # Bust pydantic-settings cache so the new env takes effect.
     from app.core.config import get_settings
     get_settings.cache_clear()
@@ -87,6 +92,7 @@ def update_settings(
                 "openrouter": bool(payload.openrouter_api_key),
                 "openai": bool(payload.openai_api_key),
                 "anthropic": bool(payload.anthropic_api_key),
+                "deepseek": bool(payload.deepseek_api_key),
             },
         },
     )

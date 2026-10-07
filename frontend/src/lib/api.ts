@@ -409,6 +409,7 @@ export const api = {
       openrouter_configured: boolean;
       openai_configured: boolean;
       anthropic_configured: boolean;
+      deepseek_configured: boolean;
     }>("/v1/settings"),
   updateSettings: (payload: {
     llm_provider?: string;
@@ -416,6 +417,7 @@ export const api = {
     openrouter_api_key?: string;
     openai_api_key?: string;
     anthropic_api_key?: string;
+    deepseek_api_key?: string;
   }) =>
     request<{
       llm_provider: string;
@@ -423,6 +425,7 @@ export const api = {
       openrouter_configured: boolean;
       openai_configured: boolean;
       anthropic_configured: boolean;
+      deepseek_configured: boolean;
     }>("/v1/settings", {
       method: "POST",
       body: JSON.stringify(payload),

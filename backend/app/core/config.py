@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # environment or paste it from the UI. Never commit the key.
     openrouter_api_key: str = ""
     openrouter_default_model: str = "minimax/minimax-m3:free"
+    # DeepSeek (https://api.deepseek.com, OpenAI-compatible). Set
+    # DEEPSEEK_API_KEY in your environment or paste it from the UI.
+    # Never commit the key.
+    deepseek_api_key: str = ""
+    deepseek_default_model: str = "deepseek-chat"
 
     document_storage_dir: str = "./var/documents"
     # Comma-separated list. Wildcards ("*") are accepted in dev only.

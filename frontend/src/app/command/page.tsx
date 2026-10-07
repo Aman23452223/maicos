@@ -45,6 +45,8 @@ export default function CommandPage() {
       .getSettings()
       .then((s) => {
         if (s.openrouter_configured) setModelLabel(s.llm_default_model);
+        else if (s.deepseek_configured)
+          setModelLabel(`DeepSeek (${s.llm_default_model || "deepseek-chat"})`);
         else if (s.openai_configured) setModelLabel("OpenAI (configured)");
         else if (s.anthropic_configured) setModelLabel("Anthropic (configured)");
         else setModelLabel("no LLM configured — rule-based planner");
