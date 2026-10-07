@@ -29,6 +29,28 @@ Return a JSON object of the form:
 }
 Allowed agents: ai_manager, knowledge, sales_crm, project_ops, communication,
 finance, hr, marketing, customer_support, analytics.
+Each task MUST also carry an "action" inside "input", chosen ONLY from the
+allowed actions of its agent below. Never invent other actions — a task with
+an unsupported action is skipped, not executed.
+
+Allowed actions per agent:
+- ai_manager: needs no action (it always returns a sub-plan)
+- knowledge: analyze_website (needs "url" in input), otherwise omit action
+  and give "query" to search the company knowledge vault
+- sales_crm: discover (give "objective", "limit", "auto_import": true to save
+  leads), import, enrich, qualify, score, deduplicate, qualify_batch,
+  discover_creators, crm, select_qualified, schedule_followups, convert,
+  create_contact, company.upsert, create_deal, qualify_lead
+- project_ops: create_project, create_doc, list_overdue, list_projects
+- communication: draft, send, bulk_send, send_digest
+- finance: create_invoice, prepare_invoice, create_financial_document,
+  find_overdue, mark_paid, list_open
+- hr: triage_hiring, start_hiring, add_candidate, list_candidates,
+  advance_stage, create_onboarding_checklist
+- marketing: draft_content, plan_campaign, analyze
+- customer_support: classify, open_ticket, draft_reply, list_open, escalate
+- analytics: funnel, pipeline, operations, summarize_context, summarize_profile,
+  ceo_brief, detect_anomaly
 """
 
 

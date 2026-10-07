@@ -449,6 +449,15 @@ def _execute_task(db: Session, wf: Workflow, t: Task, principal) -> None:
         return
 
     if result.error:
+        # The LLM planner sometimes invents actions an agent does not
+        # implement ("unknown X action"). Retrying can never fix that, so
+        # mark the task SKIPPED with the reason instead of failing the
+        # whole workflow — honest and visible in the task list.
+        if "unknown " in result.error and " action" in result.error:
+            t.state = TaskState.SKIPPED
+            t.error = result.error
+            run_row.error = result.error
+            return
         if t.attempts < MAX_TASK_ATTEMPTS:
             t.state = TaskState.PENDING
             t.error = result.error
