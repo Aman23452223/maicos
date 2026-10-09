@@ -1,4 +1,7 @@
-FROM python:3.11-slim
+# AWS ECR public mirror of docker.io/library/python (same image).
+# Used because anonymous Docker Hub pulls from shared builders get
+# rate-limited; ECR Public has no such limit for public images.
+FROM public.ecr.aws/docker/library/python:3.11-slim
 WORKDIR /app
 # Build cache buster — bump to force Railway/Render to rebuild
 # without using a cached layer. CACHE_BUST = 2026-09-01-004.
