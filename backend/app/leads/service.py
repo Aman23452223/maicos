@@ -26,6 +26,7 @@ STRONG_INTENT_KEYWORDS = frozenset({
 # with contact info are never flagged. Flagging never mutates status.
 _ARTICLE_RE = re.compile(
     r"(^\d+\s+(best|top)\b|^(top|best)\s+\d+|^(what|how|why|ultimate)\b"
+    r"|\bhow to\b|\bwhat is\b|\bwhat are\b|\bstep.by.step\b|\btutorial\b"
     r"|\bguide\b|\bblog\b)",
     re.IGNORECASE,
 )
