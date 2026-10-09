@@ -263,3 +263,59 @@ def test_draft_never_sends(db, workspace_user):
     assert mine, "draft must be persisted in the outbox"
     assert all(m.get("status") == "DRAFT" for m in mine)
     assert not any(m.get("status") == "SENT" for m in mine)
+
+
+def test_customer_resolved_from_title_via_crm_match(db, workspace_user):
+    """Customer name lives only in the task title; CRM verifies the match."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email for Aarav Electrical Works",
+                  description="onboard them",
+                  input={"action": "draft"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    draft = (res.output or {}).get("draft") or {}
+    assert draft.get("to") == "contact@aarav.test"
+    assert "Sharma Traders" in (draft.get("subject") or "")
+
+
+def test_placeholder_body_regenerated_not_kept(db, workspace_user):
+    """Templated bodies ({{name}}, [Your Name]) are regenerated, not saved."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email", description="welcome",
+                  input={"action": "draft", "customer": "Aarav Electrical Works",
+                         "subject": "Welcome!",
+                         "body": "Dear {{recipient_name}},\n\nWelcome to us, "
+                                 "your friends in business. Call {{sender}} anytime. "
+                                 "We do all the good things for valued people like you."}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    body = ((res.output or {}).get("draft") or {}).get("body") or ""
+    assert "{{" not in body and "}}" not in body
+    assert "Aarav Electrical Works" in body and "Sharma Traders" in body
+
+
+def test_wrong_direction_subject_regenerated(db, workspace_user):
+    """A welcome subject naming the customer as the destination is rebuilt."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email", description="welcome",
+                  input={"action": "draft", "customer": "Aarav Electrical Works",
+                         "subject": "Welcome to Aarav Electrical Works"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    subject = ((res.output or {}).get("draft") or {}).get("subject") or ""
+    assert "Sharma Traders" in subject, subject

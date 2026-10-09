@@ -14,6 +14,7 @@ from app.agents.runtime import call_tool
 from app.approvals.service import requires_approval
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
+_PLACEHOLDER_RE = re.compile(r"(\{\{.*?\}\}|\[Your [^\]]*\]|\[Insert [^\]]*\]|XXX+|Lorem ipsum)", re.IGNORECASE)
 _BILLING_HINTS = ("billing", "missing", "kyc", "gst", "invoice",
                   "quotation", "payment", "dues", "document")
 
@@ -306,6 +307,45 @@ class CommunicationAgent:
             return str(cust.email).strip(), (cust.name or "").strip() or None
         return None, None
 
+    def _customer_from_text(
+        self, task: AgentTask, ctx: AgentContext
+    ) -> str | None:
+        """Find a customer name mentioned in the task text — but ONLY one
+        that actually exists in this workspace's CRM tables. Matching is
+        longest-first so 'Aarav Electrical Works' beats 'Aarav'. Names
+        nobody on record never become customers (no invention)."""
+        from app.models.orm import CrmContact, Customer, Lead
+
+        ws = ctx.principal.workspace_id
+        names: set[str] = set()
+        try:
+            for (n,) in (
+                ctx.db.query(Lead.company_name)
+                .filter(Lead.company_id == ws).limit(200).all()
+            ):
+                if n and str(n).strip():
+                    names.add(str(n).strip())
+            for (n,) in (
+                ctx.db.query(CrmContact.name)
+                .filter(CrmContact.company_id == ws).limit(200).all()
+            ):
+                if n and str(n).strip():
+                    names.add(str(n).strip())
+            for (n,) in (
+                ctx.db.query(Customer.name)
+                .filter(Customer.company_id == ws).limit(200).all()
+            ):
+                if n and str(n).strip():
+                    names.add(str(n).strip())
+        except Exception:
+            return None
+        hay = f"{task.title} {task.description} {str((task.input or {}).get('objective') or '')}"
+        hay_low = hay.lower()
+        for name in sorted(names, key=len, reverse=True):
+            if len(name) >= 3 and name.lower() in hay_low:
+                return name[:120]
+        return None
+
     def _draft_identity(
         self, task: AgentTask, ctx: AgentContext
     ) -> tuple[str | None, str | None, str | None, list[str]]:
@@ -334,6 +374,10 @@ class CommunicationAgent:
                     if self._valid_email(cand):
                         email = str(cand).strip()
                         break
+        if not customer:
+            # Last resort: a name from the task text that is actually on
+            # record in this workspace's CRM (verified match, not a guess).
+            customer = self._customer_from_text(task, ctx)
         if customer and not email:
             crm_email, crm_name = self._crm_recipient(ctx, customer)
             email = email or crm_email
@@ -538,8 +582,18 @@ class CommunicationAgent:
                 gen_body += f"\n\nFrom our catalogue: {catalogue_note}"
         explicit_subject = str(inp.get("subject") or "").strip()
         explicit_body = str(inp.get("body") or "")
-        subject = explicit_subject or gen_subject
-        body = explicit_body if len(explicit_body.strip()) >= 50 else gen_body
+        # Planner-provided text wins ONLY when it is real content: long
+        # enough and free of template placeholders ({{name}}, [Your Name]).
+        # Anything stub-like is regenerated from real CRM/knowledge data.
+        # Welcome subjects must name our business (the sender) — a subject
+        # welcoming the reader "to <customer>" points the wrong way.
+        body_ok = len(explicit_body.strip()) >= 50 and not _PLACEHOLDER_RE.search(explicit_body)
+        if purpose == "welcome" and business:
+            subject_ok = bool(explicit_subject) and business.lower() in explicit_subject.lower()
+        else:
+            subject_ok = bool(explicit_subject)
+        subject = explicit_subject if subject_ok else gen_subject
+        body = explicit_body if body_ok else gen_body
         return (email or "", subject, body,
                 {"purpose": purpose, "customer": customer, "missing": missing})
 
