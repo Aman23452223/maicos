@@ -251,6 +251,42 @@ def make_proposal(payload: ProposalIn, p: Principal = Depends(get_current_princi
     return {"id": doc.id, "status": doc.status, "content": doc.content[:2000]}
 
 
+def _contact_index(db, ws: str):
+    """All workspace contacts/companies in two queries (no per-lead N+1)."""
+    from app.models.orm import CrmCompany, CrmContact
+
+    contacts = (
+        db.query(CrmContact)
+        .filter(CrmContact.company_id == ws).limit(500).all()
+    )
+    companies = (
+        db.query(CrmCompany)
+        .filter(CrmCompany.company_id == ws).limit(500).all()
+    )
+    by_company: dict[str, list] = {}
+    for c in contacts:
+        if c.crm_company_id:
+            by_company.setdefault(c.crm_company_id, []).append(c)
+    return contacts, companies, by_company
+
+
+def _contact_person_pre(indexed, customer: str | None) -> str | None:
+    """Person name for a customer from preloaded CRM data. Never invented."""
+    if not customer or not customer.strip():
+        return None
+    contacts, companies, by_company = indexed
+    needle = customer.strip().lower()
+    for c in contacts:
+        if needle in (c.name or "").lower() and (c.name or "").strip():
+            return c.name.strip()[:120]
+    for co in companies:
+        if needle in (co.name or "").lower():
+            for c in by_company.get(co.id, []):
+                if (c.name or "").strip():
+                    return c.name.strip()[:120]
+    return None
+
+
 def _contact_person(db, ws: str, customer: str | None) -> str | None:
     """Person name for a customer from CRM contacts (tenant-scoped).
 
@@ -259,32 +295,7 @@ def _contact_person(db, ws: str, customer: str | None) -> str | None:
     """
     if not customer or not customer.strip():
         return None
-    from app.models.orm import CrmCompany, CrmContact
-
-    like = f"%{customer.strip()}%"
-    hit = (
-        db.query(CrmContact)
-        .filter(CrmContact.company_id == ws, CrmContact.name.ilike(like))
-        .first()
-    )
-    if hit is not None and (hit.name or "").strip():
-        return hit.name.strip()[:120]
-    company = (
-        db.query(CrmCompany)
-        .filter(CrmCompany.company_id == ws, CrmCompany.name.ilike(like))
-        .first()
-    )
-    if company is not None:
-        linked = (
-            db.query(CrmContact)
-            .filter(CrmContact.company_id == ws,
-                    CrmContact.crm_company_id == company.id,
-                    CrmContact.name.isnot(None))
-            .first()
-        )
-        if linked is not None and (linked.name or "").strip():
-            return linked.name.strip()[:120]
-    return None
+    return _contact_person_pre(_contact_index(db, ws), customer)
 
 
 @router.get("/reports/clients")
@@ -309,13 +320,15 @@ def clients_report(p: Principal = Depends(get_current_principal),
         by_lead.setdefault(fu.lead_id, []).append(fu)
     from app.leads.service import lead_quality_flag, review_flag_for
 
+    contact_index = _contact_index(db, ws)
+
     clients = []
     for lead in leads:
         status = (lead.status.value if hasattr(lead.status, "value")
                   else str(lead.status))
         score = int(lead.score or 0)
         items = by_lead.get(lead.id, [])
-        contact_name = _contact_person(db, ws, lead.company_name)
+        contact_name = _contact_person_pre(contact_index, lead.company_name)
         scheduled = [f for f in items if f.status == "scheduled"]
         next_due = min((f.due_at for f in scheduled if f.due_at),
                        default=None)

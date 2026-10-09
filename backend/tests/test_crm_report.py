@@ -503,3 +503,21 @@ def test_review_candidates_genuine_only(db, workspace_user, client):
     assert set(cands) == {"Needy Traders"}, cands
     assert "urgent" in " ".join(cands["Needy Traders"]["signals"])
     assert "re-run qualification" in cands["Needy Traders"]["suggested_next_action"]
+
+
+def test_contact_index_matches_single_lookups(db, workspace_user):
+    """Batched contact matching agrees with per-lead lookups."""
+    from app.api.v1.growth import _contact_index, _contact_person, _contact_person_pre
+    from app.models.orm import CrmCompany, CrmContact
+
+    ws = workspace_user["company"].id
+    co = CrmCompany(company_id=ws, name="Acme")
+    db.add(co)
+    db.flush()
+    db.add(CrmContact(company_id=ws, crm_company_id=co.id, name="Acme Priya"))
+    db.add(CrmContact(company_id=ws, name="Zed"))
+    db.commit()
+    indexed = _contact_index(db, ws)
+    assert _contact_person_pre(indexed, "Acme") == "Acme Priya"
+    assert _contact_person_pre(indexed, "Nobody") is None
+    assert _contact_person(db, ws, "Acme") == "Acme Priya"
