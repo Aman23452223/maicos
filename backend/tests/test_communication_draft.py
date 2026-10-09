@@ -346,6 +346,30 @@ def test_wrong_direction_subject_regenerated(db, workspace_user):
     assert "Sharma Traders" in subject, subject
 
 
+def test_customer_resolved_from_workflow_objective(db, workspace_user):
+    """Customer named only in the workflow objective still resolves."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+    from app.core.context import Principal
+    from app.workflow import engine as eng
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    p = Principal(user_id="u", workspace_id=ws, roles=("owner",))
+    wf = eng.create_workflow(
+        db, company_id=ws, triggered_by_user_id="u", conversation_id=None,
+        title="t", objective="Draft a welcome email for Aarav Electrical Works",
+        plan={"intent": "x", "tasks": [
+            {"id": "mail", "agent": "communication",
+             "title": "Draft welcome email",
+             "input": {"action": "draft"}, "depends_on": []}]})
+    eng.run(db, wf=wf, principal=p)
+    t = list(wf.tasks)[0]
+    draft = (t.output or {}).get("draft") or {}
+    assert draft.get("to") == "contact@aarav.test", draft.get("to")
+    assert "Aarav Electrical Works" in (draft.get("body") or "")
+
+
 def test_invented_to_address_dropped_for_crm_email(db, workspace_user):
     """A planner-invented `to` loses to the verified CRM address."""
     from app.agents.base import AgentTask

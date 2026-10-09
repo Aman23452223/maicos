@@ -310,6 +310,24 @@ class CommunicationAgent:
             return str(cust.email).strip(), (cust.name or "").strip() or None
         return None, None
 
+    @staticmethod
+    def _workflow_objective(ctx: AgentContext) -> str:
+        """Workflow objective text (tenant-scoped read, best effort)."""
+        try:
+            from app.models.orm import Workflow as _Wf
+
+            _wf = (
+                ctx.db.query(_Wf)
+                .filter(_Wf.id == ctx.workflow_id,
+                        _Wf.company_id == ctx.principal.workspace_id)
+                .first()
+            )
+            if _wf is not None and _wf.objective:
+                return str(_wf.objective)
+        except Exception:
+            pass
+        return ""
+
     def _customer_from_text(
         self, task: AgentTask, ctx: AgentContext
     ) -> str | None:
@@ -343,6 +361,7 @@ class CommunicationAgent:
         except Exception:
             return None
         hay = f"{task.title} {task.description} {str((task.input or {}).get('objective') or '')}"
+        hay += f" {self._workflow_objective(ctx)}"
         hay_low = hay.lower()
         for name in sorted(names, key=len, reverse=True):
             if len(name) >= 3 and name.lower() in hay_low:
@@ -391,21 +410,8 @@ class CommunicationAgent:
             contact_name = contact_name or crm_name
         if explicit is not None:
             hay = (f"{task.title} {task.description} "
-                   f"{str((task.input or {}).get('objective') or '')}")
-            try:
-                from app.models.orm import Workflow as _Wf
-
-                _wf = (
-                    ctx.db.query(_Wf)
-                    .filter(_Wf.id == ctx.workflow_id,
-                            _Wf.company_id == ctx.principal.workspace_id)
-                    .first()
-                )
-                if _wf is not None and _wf.objective:
-                    hay += f" {_wf.objective}"
-            except Exception:
-                pass
-            hay = hay.lower()
+                   f"{str((task.input or {}).get('objective') or '')}"
+                   f" {self._workflow_objective(ctx)}").lower()
             # Trust planner-supplied addresses only when they match a
             # verified record or appear verbatim in the user's own text.
             # Anything else is treated as invented and dropped (the
