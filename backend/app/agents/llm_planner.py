@@ -43,7 +43,9 @@ Allowed actions per agent:
   create_contact, company.upsert, create_deal, qualify_lead
 - project_ops: create_project, create_doc, list_overdue, list_projects
 - communication: draft, send, bulk_send, send_digest
-- finance: create_invoice, prepare_invoice, create_financial_document,
+- finance: prepare_invoice (needs customer + amount; approval-gated),
+  prepare_quotation (needs customer and/or items; draft only, never final),
+  create_invoice (approval replay only — never emit directly),
   find_overdue, mark_paid, list_open
 - hr: triage_hiring, start_hiring, add_candidate, list_candidates,
   advance_stage, create_onboarding_checklist
