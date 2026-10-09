@@ -96,6 +96,17 @@ def test_ceo_brief_explicit_summary_kept(db, workspace_user):
     assert res.output.get("source") == "caller"
 
 
+def test_ceo_brief_singular_lead_grammar(db, workspace_user):
+    from app.models.orm import Lead
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Solo"))
+    db.commit()
+    res = _brief(db, ws)
+    assert res.error is None, res.error
+    assert "1 lead in CRM" in (res.output.get("summary") or "")
+
+
 def test_schedule_sequence_returns_names_dates_ids(db, workspace_user):
     from app.models.orm import FollowUp, Lead, LeadStatus
     from app.scheduling.followups import schedule_sequence

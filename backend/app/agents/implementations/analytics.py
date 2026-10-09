@@ -182,8 +182,9 @@ class AnalyticsAgent:
         needs: list[dict[str, str]] = []
         total = int(fun.get("leads_total", 0) or 0)
         if total:
+            unit = "lead" if total == 1 else "leads"
             lines.append(
-                f"{total} leads in CRM "
+                f"{total} {unit} in CRM "
                 f"({fun.get('contacted', 0)} contacted, "
                 f"{fun.get('responded', 0)} responded, "
                 f"{fun.get('meetings', 0)} in meetings, "
