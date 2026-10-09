@@ -36,6 +36,8 @@ def schedule_sequence(db: Session, *, company_id: str, lead_id: str,
         return {"ok": False, "error": "lead not found"}
     days = days or DEFAULT_SEQUENCE_DAYS
     now = datetime.now(UTC)
+    already = db.query(FollowUp).filter(
+        FollowUp.company_id == company_id, FollowUp.lead_id == lead_id).count()
     created: list[dict[str, Any]] = []
     for i, d in enumerate(days):
         key = f"followup:{company_id}:{lead_id}:{i}:{d}"
@@ -57,6 +59,7 @@ def schedule_sequence(db: Session, *, company_id: str, lead_id: str,
     record(db, company_id=company_id, actor=actor, action="followup.scheduled",
            target_type="lead", target_id=lead_id, details={"created": len(created)})
     return {"ok": True, "created": len(created),
+            "already_scheduled": already,
             "lead_id": lead_id, "lead_name": lead.company_name,
             "lead_status": lead.status.value
             if hasattr(lead.status, "value") else str(lead.status),

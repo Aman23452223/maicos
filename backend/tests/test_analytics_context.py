@@ -183,3 +183,25 @@ def test_failed_prerequisite_blocks_dependents(db, workspace_user):
         assert later.output in (None, {})
     finally:
         _unregister("failer_ctx")
+
+
+def test_brief_synthesizes_lead_names_and_counts(db, workspace_user):
+    """No snippets: brief still states recorded names and counts."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.analytics import AnalyticsAgent
+
+    ws = workspace_user["company"].id
+    ctx = _ctx(db, ws)
+    ctx.shared.update({
+        "sel": {"count": 2, "leads": [
+            {"company_name": "Acme"}, {"company_name": "Beta"}]},
+        "fol": {"sequences_created": 8},
+    })
+    res = AnalyticsAgent().run(
+        AgentTask(title="Summarize", description="sum",
+                  input={"action": "summarize_context"}),
+        ctx)
+    assert res.error is None, res.error
+    brief = res.output.get("brief") or ""
+    assert "Acme" in brief and "Beta" in brief, brief
+    assert "sequences created: 8" in brief, brief

@@ -44,6 +44,37 @@ class AnalyticsAgent:
                 for r in (out.get("results") or [])[:5]:
                     if isinstance(r, dict) and r.get("snippet"):
                         snippets.append(str(r["snippet"])[:300])
+            # Fact sentences from real upstream data (names, counts) so the
+            # brief stays useful even when no text snippets exist. Only
+            # recorded values — nothing inferred.
+            lead_names: list[str] = []
+            count_facts: list[str] = []
+            for _key, out in upstream:
+                for arr_key in ("leads", "prospects", "contacts"):
+                    arr = out.get(arr_key)
+                    if isinstance(arr, list):
+                        for e in arr[:10]:
+                            if isinstance(e, dict):
+                                nm = e.get("company_name") or e.get("name")
+                                if nm and str(nm) not in lead_names:
+                                    lead_names.append(str(nm)[:120])
+                for ck in ("qualified", "sequences_created", "created",
+                           "count", "total_value", "leads_total",
+                           "contacted", "responded", "meetings", "won"):
+                    v = out.get(ck)
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        label = f"{ck.replace('_', ' ')}: {v:g}"
+                        if label not in count_facts:
+                            count_facts.append(label)
+            parts: list[str] = []
+            if lead_names:
+                parts.append(
+                    f"Leads on record ({len(lead_names)}): "
+                    + ", ".join(lead_names) + ".")
+            parts.extend(count_facts)
+            if snippets:
+                parts.append(" | ".join(snippets[:5]))
+            brief = " ".join(parts)[:2000]
             evidence = "\n".join(
                 _json.dumps(out, default=str)[:4000] for _key, out in upstream
             )[:12000]
@@ -65,7 +96,7 @@ class AnalyticsAgent:
             return AgentResult(output={
                 "focus": focus,
                 "query": query,
-                "brief": " | ".join(snippets[:5])[:2000],
+                "brief": brief,
                 "sources": len(snippets),
                 "upstream_tasks": len(upstream),
                 "missing": missing,

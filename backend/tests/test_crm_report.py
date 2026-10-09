@@ -132,6 +132,7 @@ def test_schedule_sequence_returns_names_dates_ids(db, workspace_user):
     # Idempotent rerun creates nothing new.
     again = schedule_sequence(db, company_id=ws, lead_id=lead.id)
     assert again.get("created") == 0
+    assert again.get("already_scheduled") == 4
     assert db.query(FollowUp).filter(FollowUp.lead_id == lead.id).count() == 4
 
 
