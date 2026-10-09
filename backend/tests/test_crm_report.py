@@ -171,6 +171,80 @@ def test_sales_batch_reports_per_lead_entries(db, workspace_user):
     assert rerun_leads["High Co"]["already_scheduled"] == 4
 
 
+def test_strong_intent_low_score_gets_review_flag_not_rescore(db):
+    """Reported symptom: urgent/quantity notes, score 25-45. Flag, don't move."""
+    from app.leads.service import qualify_lead, review_flag_for
+    from app.models.orm import Company, Lead, LeadStatus
+
+    ws = Company(name="Flag Co")
+    db.add(ws)
+    db.flush()
+    lead = Lead(company_id=ws.id, company_name="Needy Traders",
+                notes="URGENT requirement: confirm quantity 500 bags, delivery next week")
+    db.add(lead)
+    db.commit()
+    out = qualify_lead(db, company_id=ws.id, lead_id=lead.id)
+    assert out.get("ok") is True
+    assert 20 <= out.get("score", 0) <= 50, out
+    assert out.get("status") in ("DISQUALIFIED", "NURTURE")
+    assert out.get("review_flag") is not None, out
+    assert "urgent" in out["review_flag"]["signals"], out
+    # Pure helper agrees without touching the DB row version further.
+    assert review_flag_for(lead, score=out["score"]) is not None
+
+
+def test_article_leads_flagged_real_companies_not(db):
+    from app.leads.service import lead_quality_flag
+    from app.models.orm import Company, Lead
+
+    ws = Company(name="Q Co")
+    db.add(ws)
+    db.flush()
+    junk = Lead(company_id=ws.id, company_name="Top 22 List of B2B SaaS Companies")
+    real = Lead(company_id=ws.id, company_name="Acme Corp", email="a@acme.test")
+    nameless = Lead(company_id=ws.id, company_name="   ")
+    assert lead_quality_flag(junk) is not None
+    assert "article" in (lead_quality_flag(junk) or "")
+    assert lead_quality_flag(real) is None
+    assert lead_quality_flag(nameless) is not None
+
+
+def test_followup_persistence_matches_output_ids(db):
+    """Controlled persistence check: rows, IDs and due dates match output."""
+    from app.models.orm import Company, FollowUp, Lead, LeadStatus
+    from app.scheduling.followups import schedule_sequence
+
+    ws = Company(name="Persist Co")
+    db.add(ws)
+    db.flush()
+    lead = Lead(company_id=ws.id, company_name="Solid Traders",
+                email="s@solid.test", industry="FMCG distribution",
+                location="Pune, India",
+                notes="looking for weekly atta supply, need 100 bags",
+                status=LeadStatus.QUALIFIED, score=85)
+    db.add(lead)
+    db.commit()
+    out = schedule_sequence(db, company_id=ws.id, lead_id=lead.id)
+    assert out.get("ok") is True and out.get("created") == 4
+    rows = (db.query(FollowUp).filter(FollowUp.company_id == ws.id,
+                                      FollowUp.lead_id == lead.id)
+            .order_by(FollowUp.due_at.asc()).all())
+    assert len(rows) == 4
+    assert [r.id for r in rows] == list(out.get("created_followup_ids") or [])
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
+
+    def _as_utc(v):
+        d = v if isinstance(v, _dt) else _dt.fromisoformat(v)
+        return d.replace(tzinfo=_tz.utc) if d.tzinfo is None else d
+
+    assert [_as_utc(r.due_at) for r in rows] == [
+        _as_utc(f.get("due_at")) for f in out.get("followups") or []]
+    assert all(r.status == "scheduled" for r in rows)
+    again = schedule_sequence(db, company_id=ws.id, lead_id=lead.id)
+    assert again.get("created") == 0 and again.get("already_scheduled") == 4
+
+
 def test_batch_reports_population_considered_vs_skipped(db, workspace_user):
     """Every record is accounted for: scored vs settled-skipped."""
     from app.agents.base import AgentTask

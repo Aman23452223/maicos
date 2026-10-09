@@ -25,10 +25,18 @@ def _score_row(db, ws, lead, threshold: int, actor: str = "sales_crm") -> dict |
                      actor=actor, threshold=threshold)
     if not r.get("ok"):
         return None
-    return {"lead_id": lead.id, "lead_name": lead.company_name,
-            "score": r.get("score"), "status": r.get("status"),
-            "previous_status": before,
-            "reasons": r.get("reasons") or {}}
+    from app.leads.service import lead_quality_flag
+
+    entry = {"lead_id": lead.id, "lead_name": lead.company_name,
+             "score": r.get("score"), "status": r.get("status"),
+             "previous_status": before,
+             "reasons": r.get("reasons") or {}}
+    flag = lead_quality_flag(lead)
+    if flag is not None:
+        entry["quality_flag"] = flag
+    if r.get("review_flag") is not None:
+        entry["review_flag"] = r.get("review_flag")
+    return entry
 
 
 def _summarize_scoring(entries: list[dict]) -> dict:

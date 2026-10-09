@@ -271,6 +271,7 @@ def clients_report(p: Principal = Depends(get_current_principal),
     by_lead: dict[str, list] = {}
     for fu in fus:
         by_lead.setdefault(fu.lead_id, []).append(fu)
+    from app.leads.service import lead_quality_flag, review_flag_for
 
     clients = []
     for lead in leads:
@@ -320,6 +321,8 @@ def clients_report(p: Principal = Depends(get_current_principal),
             "decision": decision, "reason": reason,
             "requirements_note": notes, "need_signal": need,
             "score_reasons": reasons,
+            "quality_flag": lead_quality_flag(lead),
+            "review_flag": review_flag_for(lead, score=score),
             "next_action": action,
             "followups_total": len(items),
             "followups_scheduled": len(scheduled),

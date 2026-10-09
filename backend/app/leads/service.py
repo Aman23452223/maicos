@@ -1,6 +1,7 @@
 """Lead CRUD + dedup + enrichment + qualification/scoring (Phases 4-6)."""
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,6 +12,36 @@ from app.intel.service import get_or_create_profile
 from app.leads.normalize import domain_of, norm_email, norm_name
 from app.leads.providers import Prospect
 from app.models.orm import CrmActivity, Lead, LeadStatus
+
+# Buying-intent signals scanned in free-text notes. Used ONLY to flag
+# low-scoring leads for human review — never to inflate scores or move
+# thresholds (threshold stays 60 / nurture 40).
+STRONG_INTENT_KEYWORDS = frozenset({
+    "urgent", "asap", "as soon as", "quantity", "qty", "deliver",
+    "bulk", "confirm", "purchase order", "budget", "deadline",
+})
+
+# Article/blog/listicle title shapes. A record is flagged ONLY when it
+# also has no contact channel (no email, no phone) — real companies
+# with contact info are never flagged. Flagging never mutates status.
+_ARTICLE_RE = re.compile(
+    r"(^\d+\s+(best|top)\b|^(top|best)\s+\d+|^(what|how|why|ultimate)\b"
+    r"|\bguide\b|\bblog\b)",
+    re.IGNORECASE,
+)
+
+
+def lead_quality_flag(lead: Lead) -> str | None:
+    """Obvious non-business content, or None. Flag-only, never mutates."""
+    name = (lead.company_name or "").strip()
+    if not name:
+        return "missing company name"
+    if (_ARTICLE_RE.search(name)
+            and not (lead.email or "").strip()
+            and not (lead.phone or "").strip()):
+        return ("likely article/blog content, not a business — "
+                "review before outreach")
+    return None
 
 
 def _bp_rules(db: Session, company_id: str) -> tuple[dict, dict]:
@@ -153,6 +184,24 @@ def score_lead(icp: dict, rules: dict, lead: Lead) -> tuple[int, dict]:
     return max(0, min(100, total)), reasons
 
 
+def review_flag_for(lead: Lead, *, score: int, threshold: int = 60,
+                    ) -> dict[str, Any] | None:
+    """Flag-only buying-intent review. Pure read — never mutates."""
+    status = lead.status.value if hasattr(lead.status, "value") else str(lead.status)
+    if status not in ("DISQUALIFIED", "NURTURE"):
+        return None
+    text = f"{lead.notes or ''} {lead.enriched_json or ''}".lower()
+    hits = sorted({k for k in STRONG_INTENT_KEYWORDS if k in text})
+    if not hits:
+        return None
+    return {
+        "reason": (f"strong buying-intent signals ({', '.join(hits)}) "
+                   f"but score {score} below {threshold} — "
+                   f"verify ICP fit manually"),
+        "signals": hits,
+    }
+
+
 def qualify_lead(db: Session, *, company_id: str, lead_id: str,
                  actor: str = "system", threshold: int = 60) -> dict[str, Any]:
     lead = db.get(Lead, lead_id)
@@ -172,6 +221,10 @@ def qualify_lead(db: Session, *, company_id: str, lead_id: str,
         lead.status = LeadStatus.NURTURE
     else:
         lead.status = LeadStatus.DISQUALIFIED
+    # Flag-only check: strong buying-intent language but a below-bar
+    # score. Surfaces records whose data may deserve a human look —
+    # scores and thresholds are left untouched.
+    review_flag = review_flag_for(lead, score=score, threshold=threshold)
     db.flush()
     db.add(CrmActivity(company_id=company_id, lead_id=lead.id, kind="qualification",
                        subject=f"score={score} status={lead.status.value}",
@@ -180,7 +233,11 @@ def qualify_lead(db: Session, *, company_id: str, lead_id: str,
     record(db, company_id=company_id, actor=actor, action="lead.qualified",
            target_type="lead", target_id=lead.id,
            details={"score": score, "status": lead.status.value})
-    return {"ok": True, "score": score, "status": lead.status.value, "reasons": reasons}
+    out: dict[str, Any] = {"ok": True, "score": score,
+                           "status": lead.status.value, "reasons": reasons}
+    if review_flag is not None:
+        out["review_flag"] = review_flag
+    return out
 
 
 def touch_contacted(db: Session, *, company_id: str, lead_id: str) -> None:
