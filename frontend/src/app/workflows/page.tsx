@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -219,6 +219,15 @@ function WorkflowDetailView({
   const { data: runs } = useSWR(`runs-${workflow.id}`, () => api.listRuns(workflow.id));
   const [resuming, setResuming] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const openCardRef = useRef<HTMLDivElement | null>(null);
+
+  // When a task is expanded, bring it into view — long pipelines can
+  // otherwise leave the saved output hidden below the fold.
+  useEffect(() => {
+    if (expandedTask && openCardRef.current) {
+      openCardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [expandedTask]);
 
   function stepsFor(taskId: string): string[] {
     const out: string[] = [];
@@ -284,10 +293,13 @@ function WorkflowDetailView({
             return (
               <div
                 key={t.id}
+                ref={isOpen ? openCardRef : undefined}
                 onClick={() => showOutput && setExpandedTask(isOpen ? null : t.id)}
-                className={`p-3 rounded-xl bg-black/40 border border-white/5 space-y-1 ${
-                  showOutput ? "cursor-pointer hover:border-white/[0.12]" : ""
-                }`}
+                className={`p-3 rounded-xl bg-black/40 border space-y-1 transition-colors ${
+                  isOpen
+                    ? "border-accent/40 shadow-[0_0_15px_rgba(91,141,239,0.15)]"
+                    : "border-white/5"
+                } ${showOutput ? "cursor-pointer hover:border-white/[0.12]" : ""}`}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-ink text-xs truncate">

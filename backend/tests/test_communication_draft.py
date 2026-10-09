@@ -17,10 +17,15 @@ BODY = "Hi Aman,\n\nWelcome aboard ABC Traders. Your account manager will call y
 
 
 def _ctx(db, ws):
+    import uuid
     from app.agents.base import AgentContext
     from app.core.context import Principal
+    # Unique ids per call: tool calls are idempotent on
+    # workflow_id:task_id:connector.operation, so fixed ids would collide
+    # with other tests using the shared file stores.
+    tag = uuid.uuid4().hex[:8]
     return AgentContext(db=db, principal=Principal(user_id="u", workspace_id=ws, roles=("owner",)),
-                        workflow_id="w", task_id="t", run_id="r",
+                        workflow_id=f"w-{tag}", task_id=f"t-{tag}", run_id=f"r-{tag}",
                         shared={"agent_name": "communication"})
 
 
@@ -94,3 +99,26 @@ def test_draft_never_sends(db, workspace_user):
     assert mine, "draft must be persisted in the outbox"
     assert all(m.get("status") == "DRAFT" for m in mine)
     assert not any(m.get("status") == "SENT" for m in mine)
+
+
+def test_approved_send_output_carries_real_subject_body(db, workspace_user):
+    """Lock the output mapping the Inspector's sent-view relies on.
+
+    Runs `execute_approved` directly (no SMTP configured, so delivery is
+    file-outbox only — nothing leaves the machine).
+    """
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    res = CommunicationAgent().execute_approved(
+        {"action": "send_external_communication",
+         "payload": {"channel": "email", "to": "aman@abc.test",
+                     "subject": SUBJECT, "body": BODY}},
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    sent = (res.output or {}).get("sent") or {}
+    assert sent.get("status") == "SENT"
+    assert sent.get("to") == "aman@abc.test"
+    assert sent.get("subject") == SUBJECT
+    assert sent.get("body") == BODY
+    assert (res.output or {}).get("channel") == "email"
