@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { TaskOutputView, hasSavedOutput, taskOutputPreview } from "@/components/TaskOutput";
+import { BusinessResults } from "@/components/BusinessResults";
 import type { Workflow, WorkflowTask } from "@/lib/types";
 
 const TERMINAL_STATES = new Set([
@@ -413,7 +414,10 @@ const w = await api.resume(wf.id);
         </div>
       </div>
 
-      {/* Task Breakdown Table */}
+      {/* Business Results — consolidated per-client report from records */}
+      {wf && <BusinessResults />}
+
+      {/* Task Breakdown Table (technical details) */}
       {tasks.length > 0 && (
         <div className="p-5 rounded-2xl bg-[#0e1217] border border-white/[0.08] shadow-lg space-y-3">
           <div className="flex items-center justify-between">

@@ -280,6 +280,37 @@ export const api = {
   },
   listLeads: (status?: string) =>
     request<Lead[]>(`/v1/leads${status ? `?status=${status}` : ""}`),
+  clientsReport: () =>
+    request<{
+      type: string;
+      summary: {
+        crm_records: number;
+        scored: number;
+        qualified: number;
+        nurtured: number;
+        disqualified: number;
+        new_unscored: number;
+        followups_total: number;
+        followups_scheduled: number;
+        leads_with_followups: number;
+      };
+      clients: {
+        lead_id: string;
+        name: string;
+        email: string | null;
+        status: string;
+        score: number;
+        priority: string;
+        decision: string;
+        reason: string;
+        requirements_note: string;
+        next_action: string;
+        followups_total: number;
+        followups_scheduled: number;
+        followup_ids: string[];
+        next_due_at: string | null;
+      }[];
+    }>("/v1/reports/clients"),
   qualifyLead: (id: string) =>
     request<{ score: number; status: string }>(`/v1/leads/${id}/qualify`, {
       method: "POST",

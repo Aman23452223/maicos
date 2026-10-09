@@ -918,3 +918,14 @@ body:has(.hero-root) {
     filter: blur(0);
   }
 }
+
+/* Print-friendly Business Results (college presentation handout) */
+@media print {
+  aside, header, nav { display: none !important; }
+  body { background: #fff !important; }
+  body * { visibility: hidden; }
+  #business-results, #business-results * { visibility: visible; }
+  #business-results { position: absolute !important; inset: 0 !important; background: #fff !important; border: none !important; box-shadow: none !important; }
+  #business-results * { color: #000 !important; background: transparent !important; border-color: #ccc !important; box-shadow: none !important; }
+}
+
