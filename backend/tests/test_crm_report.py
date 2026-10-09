@@ -412,13 +412,13 @@ def test_discovered_prospects_not_counted_until_saved(db, workspace_user):
 
 
 def _run_action(db, ws, action, action_input=None):
-    from app.agents.base import AgentTask
+    """Run a sales_crm action; returns the AgentResult."""
+    from app.agents.base import AgentContext, AgentTask
     from app.agents.implementations.sales_crm import SalesCRMAgent
     from app.core.context import Principal
-    from app.agents.base import AgentContext
     ctx = AgentContext(db=db, principal=Principal(user_id="u", workspace_id=ws,
                                                  roles=("owner",)),
-                       workflow_id="w", task_id="t", run_id="r",
+                       workflow_id="w-t", task_id="t-t", run_id="r-t",
                        shared={"agent_name": "sales_crm"})
     return SalesCRMAgent().run(
         AgentTask(title="x", description="x",
@@ -462,3 +462,42 @@ def test_deduplicate_reports_without_merging(db, workspace_user):
     groups = out.get("possible_duplicate_groups") or []
     assert any(g["count"] >= 2 for g in groups), groups
     assert out.get("scored", 0) >= 2
+
+
+def test_low_quality_excluded_from_buyer_selection(db, workspace_user):
+    """Flagged records never enter select/schedule outputs as buyers."""
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Top 9 Blogs Daily",
+                status=LeadStatus.QUALIFIED, score=70))
+    db.add(Lead(company_id=ws, company_name="Good Co", email="g@good.test",
+                status=LeadStatus.QUALIFIED, score=80))
+    db.commit()
+    sel = _run_action(db, ws, "select_qualified").output
+    assert [l["company_name"] for l in sel.get("leads") or []] == ["Good Co"]
+    assert sel.get("count") == 1
+    assert any(e["lead_name"] == "Top 9 Blogs Daily"
+               for e in sel.get("excluded_low_quality") or []), sel
+    sch = _run_action(db, ws, "schedule_followups").output
+    assert [e["lead_name"] for e in sch.get("leads") or []] == ["Good Co"]
+    reasons = {e["lead_name"]: e["reason"] for e in sch.get("skipped") or []}
+    assert "low-quality" in reasons.get("Top 9 Blogs Daily", ""), reasons
+
+
+def test_review_candidates_genuine_only(db, workspace_user, client):
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Needy Traders",
+                notes="urgent delivery, confirm quantity 500",
+                status=LeadStatus.NURTURE, score=45))
+    db.add(Lead(company_id=ws, company_name="Best 7 Blogs",
+                notes="urgent budget tips",
+                status=LeadStatus.DISQUALIFIED, score=20))
+    db.commit()
+    body = client.get("/api/v1/reports/clients").json()
+    cands = {c["name"]: c for c in body.get("review_candidates") or []}
+    assert set(cands) == {"Needy Traders"}, cands
+    assert "urgent" in " ".join(cands["Needy Traders"]["signals"])
+    assert "re-run qualification" in cands["Needy Traders"]["suggested_next_action"]

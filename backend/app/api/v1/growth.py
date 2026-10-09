@@ -377,6 +377,20 @@ def clients_report(p: Principal = Depends(get_current_principal),
     for cl in clients:
         by_status[cl["status"]] = by_status.get(cl["status"], 0) + 1
     scored = sum(1 for cl in clients if cl["status"] != "NEW")
+    # Human-review candidates: genuine strong-intent leads below the bar.
+    # Never QUALIFIED here; low-quality flagged records are excluded from
+    # this list (they have their own quality_flag on the row).
+    review_candidates = [
+        {"lead_id": cl["lead_id"], "name": cl["name"],
+         "email": cl["email"], "status": cl["status"], "score": cl["score"],
+         "reason": (cl["review_flag"] or {}).get("reason", ""),
+         "signals": (cl["review_flag"] or {}).get("signals", []),
+         "suggested_next_action": ("Add missing ICP fields (industry, "
+                                   "location, contact), then re-run "
+                                   "qualification.")}
+        for cl in clients
+        if cl["review_flag"] and not cl["quality_flag"]
+    ][:50]
     return {
         "type": "actual",
         "summary": {
@@ -391,6 +405,7 @@ def clients_report(p: Principal = Depends(get_current_principal),
             "leads_with_followups": len(by_lead),
         },
         "clients": clients,
+        "review_candidates": review_candidates,
     }
 
 

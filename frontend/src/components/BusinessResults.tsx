@@ -154,6 +154,30 @@ export function BusinessResults() {
               </tbody>
             </table>
           </div>
+
+          {(data?.review_candidates ?? []).length > 0 && (
+            <div className="mt-3 p-3 rounded-xl bg-accent/[0.06] border border-accent/20">
+              <div className="text-xs font-semibold text-ink mb-2">
+                🔍 Needs human review ({(data?.review_candidates ?? []).length}) — strong
+                buying signals, below qualification bar. Not marked qualified.
+              </div>
+              <div className="space-y-1.5">
+                {(data?.review_candidates ?? []).map((r) => (
+                  <div key={r.lead_id} className="text-[11px] leading-relaxed">
+                    <span className="font-medium text-ink">{r.name}</span>
+                    <span className="text-muted font-mono">
+                      {" "}· {r.status} · score {r.score}
+                      {r.email ? ` · ${r.email}` : " · no email"}
+                    </span>
+                    <div className="text-accent/90" title={r.signals.join(", ")}>
+                      {r.reason.slice(0, 160)}
+                    </div>
+                    <div className="text-muted">{r.suggested_next_action}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

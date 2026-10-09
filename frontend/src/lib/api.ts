@@ -322,6 +322,16 @@ export const api = {
         }[];
         next_due_at: string | null;
       }[];
+      review_candidates: {
+        lead_id: string;
+        name: string;
+        email: string | null;
+        status: string;
+        score: number;
+        reason: string;
+        signals: string[];
+        suggested_next_action: string;
+      }[];
     }>("/v1/reports/clients"),
   qualifyLead: (id: string) =>
     request<{ score: number; status: string }>(`/v1/leads/${id}/qualify`, {

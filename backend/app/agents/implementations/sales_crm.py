@@ -383,13 +383,24 @@ class SalesCRMAgent:
             ctx.db.commit()
             return AgentResult(output={"converted": done, "failed": failed})
         if action == "select_qualified":
+            from app.leads.service import lead_quality_flag
             from app.models.orm import Lead, LeadStatus
 
             rows = ctx.db.query(Lead).filter(
                 Lead.company_id == ws, Lead.status == LeadStatus.QUALIFIED).limit(50).all()
+            kept, excluded = [], []
+            for l in rows:
+                flag = lead_quality_flag(l)
+                if flag is not None:
+                    excluded.append({"lead_id": l.id, "lead_name": l.company_name,
+                                     "reason": f"flagged low-quality record ({flag}) — "
+                                               f"excluded from buyer follow-up selection"})
+                else:
+                    kept.append(l)
             return AgentResult(output={"leads": [
                 {"id": l.id, "company_name": l.company_name, "email": l.email,
-                 "score": l.score} for l in rows], "count": len(rows)})
+                 "score": l.score} for l in kept], "count": len(kept),
+                "excluded_low_quality": excluded})
         if action == "schedule_followups":
             from app.scheduling.followups import schedule_sequence
 
@@ -438,7 +449,21 @@ class SalesCRMAgent:
                     "ineligible_leads": skipped})
             total = 0
             items: list[dict] = []
+            skipped: list[dict] = []
+            from app.leads.service import lead_quality_flag as _qf
+
             for lead in rows:
+                flag = _qf(lead)
+                if flag is not None:
+                    skipped.append({
+                        "lead_id": lead.id, "lead_name": lead.company_name,
+                        "status": (lead.status.value
+                                   if hasattr(lead.status, "value") else str(lead.status)),
+                        "score": int(lead.score or 0),
+                        "reason": (f"flagged low-quality record ({flag}) — excluded "
+                                   f"from buyer follow-ups, review first"),
+                    })
+                    continue
                 r = schedule_sequence(ctx.db, company_id=ws, lead_id=lead.id)
                 total += r.get("created", 0)
                 items.append({
@@ -453,7 +478,6 @@ class SalesCRMAgent:
                     "due_dates": [f.get("due_at") for f in r.get("followups", [])],
                 })
             eligible_ids = {lead.id for lead in rows}
-            skipped = []
             for cand in (ctx.db.query(Lead)
                          .filter(Lead.company_id == ws,
                                  Lead.id.notin_(eligible_ids))
