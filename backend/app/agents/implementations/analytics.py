@@ -88,6 +88,16 @@ class AnalyticsAgent:
                 else:
                     start = max(0, idx - 60)
                     present[field] = evidence[start:idx + len(field) + 60].strip()
+            report_lines = ["Business results:"]
+            if lead_names:
+                report_lines.append(
+                    "Clients: " + "; ".join(
+                        f"{n}" for n in lead_names[:10]) + ".")
+            report_lines.extend(f"- {c}." for c in count_facts[:8])
+            if missing:
+                report_lines.append(
+                    "Still missing: " + ", ".join(missing) + ".")
+            report_text = "\n".join(report_lines)[:1500]
             query = ""
             for _key, out in upstream:
                 if out.get("query"):
@@ -97,6 +107,7 @@ class AnalyticsAgent:
                 "focus": focus,
                 "query": query,
                 "brief": brief,
+                "report_text": report_text,
                 "sources": len(snippets),
                 "upstream_tasks": len(upstream),
                 "missing": missing,

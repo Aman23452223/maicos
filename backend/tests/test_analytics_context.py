@@ -205,3 +205,5 @@ def test_brief_synthesizes_lead_names_and_counts(db, workspace_user):
     brief = res.output.get("brief") or ""
     assert "Acme" in brief and "Beta" in brief, brief
     assert "sequences created: 8" in brief, brief
+    text = res.output.get("report_text") or ""
+    assert "Business results:" in text and "Acme" in text, text
