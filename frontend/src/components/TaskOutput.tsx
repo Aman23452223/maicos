@@ -28,6 +28,22 @@ export function taskOutputPreview(output: Record<string, unknown>): string | nul
       return `${icon} Email ${key} saved`;
     }
   }
+  // Prefer the single most meaningful metric so "0 sequences created"
+  // never reads as "6 fields saved".
+  const metricKeys = [
+    "sequences_created",
+    "created",
+    "qualified",
+    "count",
+    "leads_total",
+    "total_value",
+    "converted",
+    "sent",
+  ];
+  for (const k of metricKeys) {
+    const v = output[k];
+    if (typeof v === "number") return `${k.replace(/_/g, " ")}: ${v}`;
+  }
   const keys = Object.keys(output);
   if (keys.length === 0) return null;
   // Prefer a short human scalar if one exists.
@@ -117,7 +133,7 @@ function GenericOutputView({
       {entries.slice(0, 10).map(([k, v]) => (
         <div key={k} className="text-[11px] leading-relaxed">
           <span className="text-muted font-mono">{k}: </span>
-          <OutputValue value={v} />
+          <OutputValue value={v} fieldKey={k} />
         </div>
       ))}
       {entries.length > 10 && (
@@ -129,8 +145,21 @@ function GenericOutputView({
   );
 }
 
-function OutputValue({ value }: { value: unknown }) {
+function OutputValue({ value, fieldKey }: { value: unknown; fieldKey?: string }) {
   if (value == null) return <span className="text-muted">—</span>;
+  // Persisted record IDs render as copyable mono chips for the demo.
+  if (
+    typeof value === "string" &&
+    fieldKey != null &&
+    /^(id|.+_id)$/.test(fieldKey) &&
+    value.length >= 8
+  ) {
+    return (
+      <span className="font-mono text-accent bg-accent/10 border border-accent/20 rounded px-1.5 py-0.2 break-all">
+        {value}
+      </span>
+    );
+  }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     const s = String(value);
     return (

@@ -206,6 +206,31 @@ export default function WorkflowsPage() {
   );
 }
 
+/** Concise execution summary: states with counts, failures with reasons. */
+function TaskSummaryLine({ tasks }: { tasks: { state: string; error?: string | null }[] }) {
+  const counts: Record<string, number> = {};
+  const reasons: string[] = [];
+  for (const t of tasks) {
+    counts[t.state] = (counts[t.state] || 0) + 1;
+    if ((t.state === "FAILED" || t.state === "PARTIAL") && t.error) {
+      reasons.push(t.error.slice(0, 120));
+    }
+  }
+  const order = ["COMPLETED", "RUNNING", "PENDING", "WAITING_APPROVAL", "SKIPPED", "FAILED", "PARTIAL"];
+  const parts = order.filter((s) => counts[s]).map((s) => `${counts[s]} ${s.toLowerCase()}`);
+  return (
+    <div className="mb-2 p-2 rounded-lg bg-white/[0.02] border border-white/[0.06] text-[11px] text-muted">
+      <span className="font-mono">Summary: </span>
+      <span className="text-ink/85">{parts.join(" · ") || "no tasks"}</span>
+      {reasons.slice(0, 2).map((r, i) => (
+        <div key={i} className="text-bad mt-0.5 truncate" title={r}>
+          ✕ {r}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function WorkflowDetailView({
   workflow,
   onUpdate,
@@ -285,6 +310,9 @@ function WorkflowDetailView({
         <div className="text-[10px] font-mono text-muted uppercase mb-2">
           Deconstructed Tasks ({tasks?.length ?? 0})
         </div>
+        {tasks != null && tasks.length > 0 && (
+          <TaskSummaryLine tasks={tasks} />
+        )}
         <div className="space-y-2">
           {(tasks ?? []).map((t) => {
             const showOutput = hasSavedOutput(t.output);
