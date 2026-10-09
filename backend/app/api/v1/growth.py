@@ -251,6 +251,102 @@ def make_proposal(payload: ProposalIn, p: Principal = Depends(get_current_princi
     return {"id": doc.id, "status": doc.status, "content": doc.content[:2000]}
 
 
+@router.get("/reports/clients")
+def clients_report(p: Principal = Depends(get_current_principal),
+                   db: Session = Depends(get_db)):
+    """Consolidated per-client CRM report, read straight from records.
+
+    One row per persisted lead: status, recorded requirements, score,
+    priority, qualification decision + reason, recommended next action,
+    and follow-up records (IDs + due dates) where they exist. The top
+    summary reconciles with the same rows — nothing inferred.
+    """
+    from app.models.orm import FollowUp
+    from app.scheduling.followups import PRIORITY_RULE, lead_priority
+
+    ws = p.workspace_id
+    leads = (db.query(Lead).filter(Lead.company_id == ws)
+             .order_by(Lead.score.desc()).limit(200).all())
+    fus = (db.query(FollowUp).filter(FollowUp.company_id == ws).all())
+    by_lead: dict[str, list] = {}
+    for fu in fus:
+        by_lead.setdefault(fu.lead_id, []).append(fu)
+
+    clients = []
+    for lead in leads:
+        status = (lead.status.value if hasattr(lead.status, "value")
+                  else str(lead.status))
+        score = int(lead.score or 0)
+        items = by_lead.get(lead.id, [])
+        scheduled = [f for f in items if f.status == "scheduled"]
+        next_due = min((f.due_at for f in scheduled if f.due_at),
+                       default=None)
+        reasons = lead.score_reasons or {}
+        notes = (lead.notes or "").strip()[:300]
+        need = ("need signal in notes" if int(reasons.get("need_signal", 0)) > 0
+                else "")
+        if status == "DISQUALIFIED":
+            decision, reason = ("disqualified",
+                                f"score {score}/100 below bar (60)")
+            action = "No action — disqualified."
+        elif status == "NEW":
+            decision, reason = ("awaiting qualification", "not yet scored")
+            action = "Run qualification."
+        elif status == "NURTURE":
+            decision, reason = ("nurture", f"score {score} in band 40-59")
+            action = "Review; schedule follow-ups if score reaches 60+."
+        elif status == "QUALIFIED":
+            if scheduled:
+                decision = "in follow-up"
+                reason = f"{len(scheduled)} sequence(s) scheduled"
+                action = (f"Next due {next_due.isoformat()}; "
+                          f"{len(scheduled)} remaining.")
+            else:
+                decision, reason = ("ready for follow-up",
+                                    "qualified, no sequence yet")
+                action = "Schedule follow-up tasks."
+        elif status == "CONTACTED":
+            decision, reason = ("awaiting response", "contact made")
+            action = "Follow up if no response."
+        else:
+            decision, reason = (f"status {status}", "see status")
+            action = "Review manually."
+        if not lead.email:
+            action += " Capture email address."
+        clients.append({
+            "lead_id": lead.id, "name": lead.company_name,
+            "email": lead.email, "status": status, "score": score,
+            "priority": lead_priority(lead), "priority_rule": PRIORITY_RULE,
+            "decision": decision, "reason": reason,
+            "requirements_note": notes, "need_signal": need,
+            "score_reasons": reasons,
+            "next_action": action,
+            "followups_total": len(items),
+            "followups_scheduled": len(scheduled),
+            "followup_ids": [f.id for f in items],
+            "next_due_at": next_due.isoformat() if next_due else None,
+        })
+    by_status: dict[str, int] = {}
+    for cl in clients:
+        by_status[cl["status"]] = by_status.get(cl["status"], 0) + 1
+    scored = sum(1 for cl in clients if cl["status"] != "NEW")
+    return {
+        "type": "actual",
+        "summary": {
+            "crm_records": len(clients),
+            "scored": scored,
+            "qualified": by_status.get("QUALIFIED", 0),
+            "nurtured": by_status.get("NURTURE", 0),
+            "disqualified": by_status.get("DISQUALIFIED", 0),
+            "new_unscored": by_status.get("NEW", 0),
+            "followups_total": len(fus),
+            "followups_scheduled": sum(1 for f in fus if f.status == "scheduled"),
+            "leads_with_followups": len(by_lead),
+        },
+        "clients": clients,
+    }
+
+
 @router.get("/analytics/funnel")
 def funnel_r(p: Principal = Depends(get_current_principal),
              db: Session = Depends(get_db)):

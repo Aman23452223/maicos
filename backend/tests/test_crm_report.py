@@ -171,6 +171,63 @@ def test_sales_batch_reports_per_lead_entries(db, workspace_user):
     assert rerun_leads["High Co"]["already_scheduled"] == 4
 
 
+def test_batch_reports_population_considered_vs_skipped(db, workspace_user):
+    """Every record is accounted for: scored vs settled-skipped."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.sales_crm import SalesCRMAgent
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Fresh", status=LeadStatus.NEW))
+    db.add(Lead(company_id=ws, company_name="Old", status=LeadStatus.DISQUALIFIED,
+                score=5))
+    db.commit()
+    out = SalesCRMAgent().run(
+        AgentTask(title="x", description="qualify batch",
+                  input={"action": "qualify_batch"}),
+        _ctx(db, ws)).output
+    assert out.get("considered") == 1, out
+    # Fresh was scored in this run and settled DISQUALIFIED too.
+    assert out.get("skipped_settled", {}).get("DISQUALIFIED") == 2, out
+    assert out.get("scored") == 1
+
+
+def test_clients_report_reconciles_with_records(db, workspace_user, client):
+    from app.models.orm import FollowUp, Lead, LeadStatus
+    from datetime import UTC, datetime
+
+    ws = workspace_user["company"].id
+    a = Lead(company_id=ws, company_name="Acme", email="a@acme.test",
+             status=LeadStatus.QUALIFIED, score=85,
+             notes="looking for atta supply")
+    b = Lead(company_id=ws, company_name="Junk", status=LeadStatus.DISQUALIFIED,
+             score=5)
+    db.add_all([a, b])
+    db.flush()
+    db.add(FollowUp(company_id=ws, lead_id=a.id,
+                    due_at=datetime.now(UTC), channel="email",
+                    status="scheduled", attempt=0, idempotency_key="k-rep-1"))
+    db.commit()
+
+    r = client.get("/api/v1/reports/clients")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("type") == "actual"
+    s = body["summary"]
+    assert s["crm_records"] == 2
+    assert s["scored"] == 2 and s["qualified"] == 1 and s["disqualified"] == 1
+    assert s["new_unscored"] == 0
+    assert s["followups_total"] == 1 and s["followups_scheduled"] == 1
+    by_name = {c["name"]: c for c in body["clients"]}
+    acme = by_name["Acme"]
+    assert acme["decision"] == "in follow-up"
+    assert acme["priority"] == "high" and acme["score"] == 85
+    assert len(acme["followup_ids"]) == 1 and acme["next_due_at"]
+    assert "atta" in (acme["requirements_note"] or "").lower()
+    assert by_name["Junk"]["decision"] == "disqualified"
+    assert "60" in by_name["Junk"]["reason"]
+
+
 def test_followup_empty_is_explained_not_silent(db, workspace_user):
     """The reported bug: COMPLETED with sequences_created 0 and no reason.
 

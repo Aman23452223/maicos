@@ -223,6 +223,7 @@ class SalesCRMAgent:
                 Lead.company_id == ws, Lead.status == LeadStatus.NEW).limit(50).all()
             if not new_leads:
                 return AgentResult(output={"scored": 0, "became_qualified": 0,
+                                            "considered": 0,
                                             "message": "no NEW leads to qualify"})
             done = 0
             for lead in new_leads[:10]:
@@ -247,7 +248,19 @@ class SalesCRMAgent:
                     continue
             ctx.db.commit()
             out = _summarize_scoring(entries)
-            out.update({"failed": failed, "batch": True})
+            from sqlalchemy import func as _func
+
+            _settled = dict(
+                ctx.db.query(Lead.status, _func.count(Lead.id))
+                .filter(Lead.company_id == ws,
+                        Lead.status != LeadStatus.NEW)
+                .group_by(Lead.status).all()
+            )
+            out.update({"failed": failed, "batch": True,
+                        "considered": len(new_leads),
+                        "skipped_settled": {
+                            (s.value if hasattr(s, "value") else str(s)): c
+                            for s, c in _settled.items()}})
             return AgentResult(output=out)
         if action == "discover_creators":
             from app.leads.creators import discover as discover_creators
@@ -318,8 +331,21 @@ class SalesCRMAgent:
                         entries.append(entry)
                 ctx.db.commit()
                 out = _summarize_scoring(entries)
+                from sqlalchemy import func as _func2
+
+                _excluded = dict(
+                    ctx.db.query(Lead.status, _func2.count(Lead.id))
+                    .filter(Lead.company_id == ws,
+                            Lead.status.in_([LeadStatus.DISQUALIFIED,
+                                             LeadStatus.LOST]))
+                    .group_by(Lead.status).all()
+                )
                 out.update({"failed": failed, "batch": True,
-                            "action": action})
+                            "action": action,
+                            "considered": len(rows),
+                            "excluded_settled": {
+                                (s.value if hasattr(s, "value") else str(s)): c
+                                for s, c in _excluded.items()}})
                 if action == "deduplicate":
                     out["possible_duplicate_groups"] = \
                         _duplicate_groups(ctx.db, ws)
