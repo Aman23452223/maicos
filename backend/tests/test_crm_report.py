@@ -160,3 +160,60 @@ def test_sales_batch_reports_per_lead_entries(db, workspace_user):
     for entry in by_name.values():
         assert len(entry["created_followup_ids"]) == 4
         assert len(entry["due_dates"]) == 4
+
+
+def test_followup_empty_is_explained_not_silent(db, workspace_user):
+    """The reported bug: COMPLETED with sequences_created 0 and no reason.
+
+    Root cause was NOT scheduling/persistence — ineligible leads (NEW /
+    DISQUALIFIED) simply match nothing. The fix reports WHY per lead.
+    """
+    from app.agents.base import AgentTask
+    from app.agents.implementations.sales_crm import SalesCRMAgent
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Fresh Co", status=LeadStatus.NEW,
+                score=0))
+    db.add(Lead(company_id=ws, company_name="Junk Co", status=LeadStatus.DISQUALIFIED,
+                score=10))
+    db.commit()
+
+    ctx = _ctx(db, ws)
+    res = SalesCRMAgent().run(
+        AgentTask(title="x", description="schedule them all",
+                  input={"action": "schedule_followups"}),
+        ctx)
+    assert res.error is None, res.error
+    out = res.output
+    assert out.get("sequences_created") == 0 and out.get("leads") == []
+    assert "Qualif" in (out.get("reason") or ""), out
+    assert out.get("lead_status_breakdown", {}).get("NEW") == 1
+    assert out.get("lead_status_breakdown", {}).get("DISQUALIFIED") == 1
+    by_name = {e["lead_name"]: e for e in out.get("ineligible_leads") or []}
+    assert "not yet qualified" in by_name["Fresh Co"]["reason"]
+    assert "disqualified" in by_name["Junk Co"]["reason"]
+
+
+def test_discovered_prospects_not_counted_until_saved(db, workspace_user):
+    """Discovery output and CRM counts stay separate until import persists."""
+    from app.analytics.metrics import funnel
+    from app.leads.providers import Prospect
+    from app.leads.service import import_prospects
+    from app.models.orm import Lead
+
+    ws = workspace_user["company"].id
+    # Discovered (e.g. Tavily) but never imported: not a CRM lead.
+    ghosts = [Prospect(company_name="Ghost Co", website="https://ghost.test")]
+    assert funnel(db, company_id=ws)["leads_total"] == 0
+    assert db.query(Lead).filter(Lead.company_id == ws).count() == 0
+
+    imp = import_prospects(db, company_id=ws, prospects=[
+        Prospect(company_name="Real Co", email="r@real.test")], actor="user")
+    db.commit()
+    assert imp["created"] == 1
+    assert funnel(db, company_id=ws)["leads_total"] == 1
+    names = [l.company_name for l in
+             db.query(Lead).filter(Lead.company_id == ws).all()]
+    assert names == ["Real Co"] and "Ghost Co" not in names
+    _ = ghosts

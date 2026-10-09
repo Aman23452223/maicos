@@ -12,6 +12,23 @@ from app.agents.runtime import call_tool
 ENRICH_BATCH_LIMIT = 10
 
 
+def _followup_ineligibility(lead, status: str) -> str:
+    """Why this lead gets no follow-up sequence (honest, specific)."""
+    score = int(lead.score or 0)
+    if getattr(lead, "opted_out", False):
+        return "opted out of contact"
+    if status == "DISQUALIFIED":
+        return f"disqualified (score {score}, needs 60+ to qualify)"
+    if status == "NEW":
+        return "not yet qualified — run qualification first"
+    if status == "NURTURE":
+        return (f"nurture band (score {score}) — below the follow-up bar "
+                f"(QUALIFIED or CONTACTED)")
+    if status in ("RESPONDED", "MEETING", "PROPOSAL", "WON", "LOST"):
+        return f"already past follow-ups (status {status})"
+    return f"status {status} is not follow-up eligible"
+
+
 class SalesCRMAgent:
     name = "sales_crm"
     description = "Qualifies leads, manages contacts and pipeline through the CRM."
@@ -284,6 +301,37 @@ class SalesCRMAgent:
                     [LeadStatus.QUALIFIED, LeadStatus.CONTACTED])).limit(20).all()
             from app.scheduling.followups import PRIORITY_RULE, lead_priority
 
+            if not rows:
+                # No eligible leads is an honest empty — explain it instead
+                # of returning a bare zero: status breakdown plus per-lead
+                # reasons so the report shows WHY nothing was scheduled.
+                from sqlalchemy import func as _func
+
+                counts = dict(
+                    ctx.db.query(Lead.status, _func.count(Lead.id))
+                    .filter(Lead.company_id == ws)
+                    .group_by(Lead.status).all()
+                )
+                breakdown = {(s.value if hasattr(s, "value") else str(s)): c
+                             for s, c in counts.items()}
+                skipped = []
+                for cand in (ctx.db.query(Lead)
+                             .filter(Lead.company_id == ws)
+                             .order_by(Lead.score.desc()).limit(20).all()):
+                    status = (cand.status.value if hasattr(cand.status, "value")
+                              else str(cand.status))
+                    skipped.append({
+                        "lead_id": cand.id, "lead_name": cand.company_name,
+                        "status": status, "score": int(cand.score or 0),
+                        "reason": _followup_ineligibility(cand, status),
+                    })
+                ctx.db.commit()
+                return AgentResult(output={
+                    "sequences_created": 0, "leads": [], "eligible": 0,
+                    "reason": ("No QUALIFIED or CONTACTED leads to schedule. "
+                               "Qualify leads first (score 60+ qualifies)."),
+                    "lead_status_breakdown": breakdown,
+                    "ineligible_leads": skipped})
             total = 0
             items: list[dict] = []
             for lead in rows:
