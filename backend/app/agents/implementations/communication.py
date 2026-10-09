@@ -362,7 +362,9 @@ class CommunicationAgent:
         customer = str(inp.get("customer") or "").strip() or None
         contact_name = str(inp.get("contact_name") or inp.get("name") or "").strip() or None
         raw_to = inp.get("to") or inp.get("email") or ""
-        email = str(raw_to).strip() if self._valid_email(raw_to) else None
+        explicit = str(raw_to).strip() if self._valid_email(raw_to) else None
+        email: str | None = None
+        verified: set[str] = set()
         for _key, out in (ctx.shared or {}).items():
             if not isinstance(out, dict):
                 continue
@@ -372,19 +374,44 @@ class CommunicationAgent:
                 customer = str(comp["name"])[:120]
             if not contact_name and cont.get("name"):
                 contact_name = str(cont["name"])[:120]
-            if not email:
-                for cand in (cont.get("email"), comp.get("email")):
-                    if self._valid_email(cand):
+            for cand in (cont.get("email"), comp.get("email")):
+                if self._valid_email(cand):
+                    verified.add(str(cand).strip().lower())
+                    if not email:
                         email = str(cand).strip()
-                        break
         if not customer:
             # Last resort: a name from the task text that is actually on
             # record in this workspace's CRM (verified match, not a guess).
             customer = self._customer_from_text(task, ctx)
-        if customer and not email:
+        if customer:
             crm_email, crm_name = self._crm_recipient(ctx, customer)
-            email = email or crm_email
+            if crm_email:
+                verified.add(crm_email.lower())
+                email = email or crm_email
             contact_name = contact_name or crm_name
+        if explicit is not None:
+            hay = (f"{task.title} {task.description} "
+                   f"{str((task.input or {}).get('objective') or '')}")
+            try:
+                from app.models.orm import Workflow as _Wf
+
+                _wf = (
+                    ctx.db.query(_Wf)
+                    .filter(_Wf.id == ctx.workflow_id,
+                            _Wf.company_id == ctx.principal.workspace_id)
+                    .first()
+                )
+                if _wf is not None and _wf.objective:
+                    hay += f" {_wf.objective}"
+            except Exception:
+                pass
+            hay = hay.lower()
+            # Trust planner-supplied addresses only when they match a
+            # verified record or appear verbatim in the user's own text.
+            # Anything else is treated as invented and dropped (the
+            # verified address above, if any, is kept instead).
+            if explicit.lower() in verified or explicit.lower() in hay:
+                email = explicit
         missing: list[str] = []
         if not email:
             missing.append("recipient email address (not found in CRM)")

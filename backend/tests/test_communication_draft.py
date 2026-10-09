@@ -32,6 +32,7 @@ def _ctx(db, ws):
 def _draft_plan():
     return {"intent": "x", "tasks": [
         {"id": "mail", "agent": "communication", "title": "Draft welcome email",
+         "description": "Draft welcome email to aman@abc.test",
          "input": {"action": "draft", "to": "aman@abc.test",
                    "subject": SUBJECT, "body": BODY},
          "depends_on": []},
@@ -343,3 +344,38 @@ def test_wrong_direction_subject_regenerated(db, workspace_user):
     assert res.error is None, res.error
     subject = ((res.output or {}).get("draft") or {}).get("subject") or ""
     assert "Sharma Traders" in subject, subject
+
+
+def test_invented_to_address_dropped_for_crm_email(db, workspace_user):
+    """A planner-invented `to` loses to the verified CRM address."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email for Aarav Electrical Works",
+                  description="welcome",
+                  input={"action": "draft",
+                         "to": "contact@aaravelectricalworks.example"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    draft = (res.output or {}).get("draft") or {}
+    assert draft.get("to") == "contact@aarav.test", draft.get("to")
+
+
+def test_user_typed_to_address_trusted(db, workspace_user):
+    """An address appearing verbatim in the user's text is kept."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Email newlead@example.com the welcome note",
+                  description="brand new customer, not in CRM yet",
+                  input={"action": "draft", "to": "newlead@example.com"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    draft = (res.output or {}).get("draft") or {}
+    assert draft.get("to") == "newlead@example.com"
