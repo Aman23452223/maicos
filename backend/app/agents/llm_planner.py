@@ -51,8 +51,10 @@ Allowed actions per agent:
   advance_stage, create_onboarding_checklist
 - marketing: draft_content, plan_campaign, analyze
 - customer_support: classify, open_ticket, draft_reply, list_open, escalate
-- analytics: funnel, pipeline, operations, summarize_context, summarize_profile,
-  ceo_brief, detect_anomaly
+- analytics: funnel, pipeline, operations, summarize_context (summarizes
+  THIS task's depends_on outputs under their own plan ids — never invent an
+  upstream id like "context"; give "required_fields" for missing-info analysis),
+  summarize_profile, ceo_brief, detect_anomaly
 """
 
 

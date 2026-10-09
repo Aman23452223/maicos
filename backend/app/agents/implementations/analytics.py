@@ -21,15 +21,55 @@ class AnalyticsAgent:
     def run(self, task: AgentTask, ctx: AgentContext) -> AgentResult:
         action = task.input.get("action", "summarize")
         if action == "summarize_context":
-            upstream = ctx.shared.get("context") or {}
-            results = upstream.get("results") or []
-            if not results:
-                return AgentResult(error="no upstream context to summarize")
-            top = [str(r.get("snippet", ""))[:300] for r in results[:5]]
+            # Summarize the task's REAL upstream outputs. The engine seeds
+            # `shared` from this task's `depends_on` (keyed by upstream plan
+            # ids), so read every entry — never a hardcoded key. An optional
+            # `required_fields` list turns this into a missing-information
+            # analysis: each field is checked against the evidence, verbatim.
+            import json as _json
+
+            focus = str(task.input.get("focus") or task.description or "").strip()
+            required = task.input.get("required_fields") or []
+            if isinstance(required, str):
+                required = [required]
+            required = [str(f).strip() for f in required if str(f).strip()][:20]
+
+            upstream = [(k, v) for k, v in (ctx.shared or {}).items()
+                        if k != "agent_name" and isinstance(v, dict) and v]
+            if not upstream:
+                return AgentResult(
+                    error="no upstream outputs to summarize (check the task's depends_on)")
+            snippets: list[str] = []
+            for _key, out in upstream:
+                for r in (out.get("results") or [])[:5]:
+                    if isinstance(r, dict) and r.get("snippet"):
+                        snippets.append(str(r["snippet"])[:300])
+            evidence = "\n".join(
+                _json.dumps(out, default=str)[:4000] for _key, out in upstream
+            )[:12000]
+            low = evidence.lower()
+            missing: list[str] = []
+            present: dict[str, str] = {}
+            for field in required:
+                idx = low.find(field.lower())
+                if idx < 0:
+                    missing.append(field)
+                else:
+                    start = max(0, idx - 60)
+                    present[field] = evidence[start:idx + len(field) + 60].strip()
+            query = ""
+            for _key, out in upstream:
+                if out.get("query"):
+                    query = str(out["query"])[:200]
+                    break
             return AgentResult(output={
-                "query": upstream.get("query", ""),
-                "brief": " | ".join(top)[:2000],
-                "sources": len(results)})
+                "focus": focus,
+                "query": query,
+                "brief": " | ".join(snippets[:5])[:2000],
+                "sources": len(snippets),
+                "upstream_tasks": len(upstream),
+                "missing": missing,
+                "present": present})
         if action == "summarize_profile":
             # Generic: summarize upstream analyze_site profile (no industry logic).
             upstream = ctx.shared.get("analyze_site") or {}
