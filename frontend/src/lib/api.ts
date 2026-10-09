@@ -297,6 +297,7 @@ export const api = {
       clients: {
         lead_id: string;
         name: string;
+        contact_name: string | null;
         email: string | null;
         status: string;
         score: number;
@@ -304,10 +305,21 @@ export const api = {
         decision: string;
         reason: string;
         requirements_note: string;
+        need_signal: string;
+        score_reasons: Record<string, number>;
+        quality_flag: string | null;
+        review_flag: { reason: string; signals: string[] } | null;
         next_action: string;
         followups_total: number;
         followups_scheduled: number;
         followup_ids: string[];
+        followups: {
+          id: string;
+          due_at: string | null;
+          channel: string;
+          status: string;
+          attempt: number;
+        }[];
         next_due_at: string | null;
       }[];
     }>("/v1/reports/clients"),

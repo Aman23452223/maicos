@@ -251,6 +251,42 @@ def make_proposal(payload: ProposalIn, p: Principal = Depends(get_current_princi
     return {"id": doc.id, "status": doc.status, "content": doc.content[:2000]}
 
 
+def _contact_person(db, ws: str, customer: str | None) -> str | None:
+    """Person name for a customer from CRM contacts (tenant-scoped).
+
+    Matches contacts by name, or via a CRM company with a matching name.
+    Returns None when nobody is on record — never invented.
+    """
+    if not customer or not customer.strip():
+        return None
+    from app.models.orm import CrmCompany, CrmContact
+
+    like = f"%{customer.strip()}%"
+    hit = (
+        db.query(CrmContact)
+        .filter(CrmContact.company_id == ws, CrmContact.name.ilike(like))
+        .first()
+    )
+    if hit is not None and (hit.name or "").strip():
+        return hit.name.strip()[:120]
+    company = (
+        db.query(CrmCompany)
+        .filter(CrmCompany.company_id == ws, CrmCompany.name.ilike(like))
+        .first()
+    )
+    if company is not None:
+        linked = (
+            db.query(CrmContact)
+            .filter(CrmContact.company_id == ws,
+                    CrmContact.crm_company_id == company.id,
+                    CrmContact.name.isnot(None))
+            .first()
+        )
+        if linked is not None and (linked.name or "").strip():
+            return linked.name.strip()[:120]
+    return None
+
+
 @router.get("/reports/clients")
 def clients_report(p: Principal = Depends(get_current_principal),
                    db: Session = Depends(get_db)):
@@ -279,9 +315,15 @@ def clients_report(p: Principal = Depends(get_current_principal),
                   else str(lead.status))
         score = int(lead.score or 0)
         items = by_lead.get(lead.id, [])
+        contact_name = _contact_person(db, ws, lead.company_name)
         scheduled = [f for f in items if f.status == "scheduled"]
         next_due = min((f.due_at for f in scheduled if f.due_at),
                        default=None)
+        fu_detail = [{
+            "id": f.id,
+            "due_at": f.due_at.isoformat() if f.due_at else None,
+            "channel": f.channel, "status": f.status, "attempt": f.attempt,
+        } for f in sorted(items, key=lambda x: (x.due_at is None, x.due_at))[:10]]
         reasons = lead.score_reasons or {}
         notes = (lead.notes or "").strip()[:300]
         need = ("need signal in notes" if int(reasons.get("need_signal", 0)) > 0
@@ -316,6 +358,7 @@ def clients_report(p: Principal = Depends(get_current_principal),
             action += " Capture email address."
         clients.append({
             "lead_id": lead.id, "name": lead.company_name,
+            "contact_name": contact_name,
             "email": lead.email, "status": status, "score": score,
             "priority": lead_priority(lead), "priority_rule": PRIORITY_RULE,
             "decision": decision, "reason": reason,
@@ -327,6 +370,7 @@ def clients_report(p: Principal = Depends(get_current_principal),
             "followups_total": len(items),
             "followups_scheduled": len(scheduled),
             "followup_ids": [f.id for f in items],
+            "followups": fu_detail,
             "next_due_at": next_due.isoformat() if next_due else None,
         })
     by_status: dict[str, int] = {}

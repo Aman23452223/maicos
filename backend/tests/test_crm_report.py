@@ -245,6 +245,56 @@ def test_followup_persistence_matches_output_ids(db):
     assert again.get("created") == 0 and again.get("already_scheduled") == 4
 
 
+def test_batch_normal_path_lists_skipped_with_reasons(db, workspace_user):
+    """Partial eligibility: skipped rows are visible, not silent."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.sales_crm import SalesCRMAgent
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Good", email="g@good.test",
+                status=LeadStatus.QUALIFIED, score=80))
+    db.add(Lead(company_id=ws, company_name="Junk", status=LeadStatus.DISQUALIFIED,
+                score=5))
+    db.commit()
+    out = SalesCRMAgent().run(
+        AgentTask(title="x", description="schedule",
+                  input={"action": "schedule_followups"}),
+        _ctx(db, ws)).output
+    assert out.get("eligible") == 1 and len(out.get("leads") or []) == 1
+    skipped = out.get("skipped") or []
+    assert len(skipped) == 1 and skipped[0]["lead_name"] == "Junk"
+    assert "disqualified" in skipped[0]["reason"]
+
+
+def test_clients_row_has_contact_followups_and_flags(db, workspace_user, client):
+    from app.models.orm import CrmCompany, CrmContact, FollowUp, Lead, LeadStatus
+    from datetime import UTC, datetime
+
+    ws = workspace_user["company"].id
+    lead = Lead(company_id=ws, company_name="Acme", email="a@acme.test",
+                status=LeadStatus.QUALIFIED, score=85,
+                notes="urgent delivery needed")
+    db.add(lead)
+    db.flush()
+    co = CrmCompany(company_id=ws, name="Acme")
+    db.add(co)
+    db.flush()
+    db.add(CrmContact(company_id=ws, crm_company_id=co.id, name="Acme Priya"))
+    db.add(FollowUp(company_id=ws, lead_id=lead.id,
+                    due_at=datetime.now(UTC), channel="email",
+                    status="scheduled", attempt=0, idempotency_key="k-ui-1"))
+    db.commit()
+    body = client.get("/api/v1/reports/clients").json()
+    row = {c["name"]: c for c in body["clients"]}["Acme"]
+    assert row["contact_name"] == "Acme Priya"
+    assert row["followups_scheduled"] == 1
+    assert len(row["followups"]) == 1
+    fu = row["followups"][0]
+    assert fu["status"] == "scheduled" and fu["due_at"] and fu["channel"] == "email"
+    assert row["quality_flag"] is None  # real company + email: no flag
+
+
 def test_batch_reports_population_considered_vs_skipped(db, workspace_user):
     """Every record is accounted for: scored vs settled-skipped."""
     from app.agents.base import AgentTask

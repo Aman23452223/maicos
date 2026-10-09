@@ -89,6 +89,9 @@ export function BusinessResults() {
                   <tr key={c.lead_id} className="hover:bg-white/[0.02] align-top">
                     <td className="py-2.5 pr-3">
                       <div className="font-medium text-ink">{c.name}</div>
+                      {c.contact_name && (
+                        <div className="text-[11px] text-ink/80">👤 {c.contact_name}</div>
+                      )}
                       <div className="text-[10px] text-muted font-mono break-all" title={c.lead_id}>
                         {c.email || "no email"} · {c.lead_id.slice(0, 8)}…
                       </div>
@@ -103,6 +106,16 @@ export function BusinessResults() {
                     <td className="max-w-xs">
                       <div className="font-medium text-ink">{c.decision}</div>
                       <div className="text-[11px] text-muted">{c.reason}</div>
+                      {c.quality_flag && (
+                        <div className="mt-1 inline-block px-1.5 py-0.2 rounded text-[10px] font-mono bg-warn/10 text-warn border border-warn/20" title={c.quality_flag}>
+                          ⚠️ low-quality record — review
+                        </div>
+                      )}
+                      {c.review_flag && (
+                        <div className="mt-1 px-1.5 py-0.5 rounded text-[10px] bg-accent/10 text-accent border border-accent/20" title={c.review_flag.reason}>
+                          🔍 {c.review_flag.reason.slice(0, 140)}
+                        </div>
+                      )}
                       {c.requirements_note && (
                         <div className="text-[11px] text-muted/80 italic">
                           “{c.requirements_note.slice(0, 120)}”
@@ -114,18 +127,15 @@ export function BusinessResults() {
                       {c.followups_scheduled > 0 ? (
                         <div className="space-y-0.5">
                           <div className="text-ok">{c.followups_scheduled} scheduled</div>
-                          {c.next_due_at && (
-                            <div className="text-muted">
-                              next: {new Date(c.next_due_at).toLocaleDateString()}
-                            </div>
-                          )}
-                          {c.followup_ids.slice(0, 2).map((id) => (
-                            <div key={id} className="text-accent break-all" title={id}>
-                              {id.slice(0, 8)}…
+                          {(c.followups ?? []).slice(0, 4).map((f) => (
+                            <div key={f.id} className="text-muted" title={`${f.id} · ${f.channel} · ${f.status}`}>
+                              <span className="text-accent break-all">{f.id.slice(0, 8)}…</span>
+                              {f.due_at ? ` · due ${new Date(f.due_at).toLocaleDateString()}` : ""}
+                              {` · ${f.status}`}
                             </div>
                           ))}
-                          {c.followup_ids.length > 2 && (
-                            <div className="text-muted">+{c.followup_ids.length - 2} more</div>
+                          {(c.followups ?? []).length > 4 && (
+                            <div className="text-muted">+{(c.followups ?? []).length - 4} more</div>
                           )}
                         </div>
                       ) : (

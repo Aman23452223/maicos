@@ -452,8 +452,22 @@ class SalesCRMAgent:
                     "created_followup_ids": r.get("created_followup_ids", []),
                     "due_dates": [f.get("due_at") for f in r.get("followups", [])],
                 })
+            eligible_ids = {lead.id for lead in rows}
+            skipped = []
+            for cand in (ctx.db.query(Lead)
+                         .filter(Lead.company_id == ws,
+                                 Lead.id.notin_(eligible_ids))
+                         .order_by(Lead.score.desc()).limit(20).all()):
+                status = (cand.status.value if hasattr(cand.status, "value")
+                          else str(cand.status))
+                skipped.append({
+                    "lead_id": cand.id, "lead_name": cand.company_name,
+                    "status": status, "score": int(cand.score or 0),
+                    "reason": _followup_ineligibility(cand, status),
+                })
             ctx.db.commit()
-            return AgentResult(output={"sequences_created": total, "leads": items})
+            return AgentResult(output={"sequences_created": total, "leads": items,
+                                       "eligible": len(rows), "skipped": skipped})
         if action == "convert":
             from app.crm.providers import convert_lead_to_contact
 
