@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { TaskOutputView, hasSavedOutput, taskOutputPreview } from "@/components/TaskOutput";
 import type { Workflow, WorkflowTask } from "@/lib/types";
 
 const TERMINAL_STATES = new Set([
@@ -31,6 +32,7 @@ export default function CommandPage() {
   const [err, setErr] = useState<string | null>(null);
   const [wf, setWf] = useState<Workflow | null>(null);
   const [tasks, setTasks] = useState<WorkflowTask[]>([]);
+  const [openTask, setOpenTask] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
   const [scheduledMsg, setScheduledMsg] = useState<string | null>(null);
   const [attached, setAttached] = useState<string[]>([]);
@@ -426,41 +428,61 @@ const w = await api.resume(wf.id);
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {tasks.map((t) => (
-                  <tr key={t.id} className="hover:bg-white/[0.02]">
-                    <td className="py-2.5 font-mono text-accent font-semibold">
-                      🤖 {t.agent_name}
-                    </td>
-                    <td className="max-w-md">
-                      <div className="font-medium text-ink">{t.title}</div>
-                      <div className="text-[11px] text-muted truncate">{t.description}</div>
-                    </td>
-                    <td>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          t.state === "COMPLETED"
-                            ? "bg-ok/10 text-ok border border-ok/20"
-                            : t.state === "FAILED"
-                            ? "bg-bad/10 text-bad border border-bad/20"
-                            : t.state === "RUNNING"
-                            ? "bg-accent/10 text-accent border border-accent/20 animate-pulse"
-                            : "bg-white/5 text-muted"
-                        }`}
+                {tasks.map((t) => {
+                  const showOutput = hasSavedOutput(t.output);
+                  const preview = showOutput ? taskOutputPreview(t.output) : null;
+                  const isOpen = openTask === t.id;
+                  return (
+                    <>
+                      <tr
+                        key={t.id}
+                        onClick={() => showOutput && setOpenTask(isOpen ? null : t.id)}
+                        className={showOutput ? "hover:bg-white/[0.02] cursor-pointer" : "hover:bg-white/[0.02]"}
                       >
-                        {t.state}
-                      </span>
-                    </td>
-                    <td className="text-muted font-mono text-[11px]">
-                      {t.error ? (
-                        <span className="text-bad">{t.error}</span>
-                      ) : t.output && Object.keys(t.output).length > 0 ? (
-                        <span className="text-ok">Completed</span>
-                      ) : (
-                        "—"
+                        <td className="py-2.5 font-mono text-accent font-semibold">
+                          🤖 {t.agent_name}
+                        </td>
+                        <td className="max-w-md">
+                          <div className="font-medium text-ink">{t.title}</div>
+                          <div className="text-[11px] text-muted truncate">{t.description}</div>
+                        </td>
+                        <td>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              t.state === "COMPLETED"
+                                ? "bg-ok/10 text-ok border border-ok/20"
+                                : t.state === "FAILED"
+                                ? "bg-bad/10 text-bad border border-bad/20"
+                                : t.state === "RUNNING"
+                                ? "bg-accent/10 text-accent border border-accent/20 animate-pulse"
+                                : "bg-white/5 text-muted"
+                            }`}
+                          >
+                            {t.state}
+                          </span>
+                        </td>
+                        <td className="text-muted font-mono text-[11px] max-w-xs">
+                          {t.error ? (
+                            <span className="text-bad">{t.error}</span>
+                          ) : preview ? (
+                            <span className="text-ink/85" title={preview}>
+                              {preview} <span className="text-muted">{isOpen ? "▾" : "▸"}</span>
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                      {isOpen && showOutput && (
+                        <tr key={`${t.id}-output`}>
+                          <td colSpan={4} className="pb-3">
+                            <TaskOutputView output={t.output} />
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>

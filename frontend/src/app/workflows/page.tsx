@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRealtime } from "@/lib/realtime";
+import { TaskOutputView, hasSavedOutput, taskOutputPreview } from "@/components/TaskOutput";
 import type { Workflow, WorkflowState } from "@/lib/types";
 
 const STATE_FILTERS: { label: string; value: WorkflowState | "" }[] = [
@@ -277,21 +278,22 @@ function WorkflowDetailView({
         </div>
         <div className="space-y-2">
           {(tasks ?? []).map((t) => {
-            const hasOutput = t.output && Object.keys(t.output).length > 0;
+            const showOutput = hasSavedOutput(t.output);
             const isOpen = expandedTask === t.id;
+            const preview = showOutput ? taskOutputPreview(t.output) : null;
             return (
               <div
                 key={t.id}
-                onClick={() => hasOutput && setExpandedTask(isOpen ? null : t.id)}
+                onClick={() => showOutput && setExpandedTask(isOpen ? null : t.id)}
                 className={`p-3 rounded-xl bg-black/40 border border-white/5 space-y-1 ${
-                  hasOutput ? "cursor-pointer hover:border-white/[0.12]" : ""
+                  showOutput ? "cursor-pointer hover:border-white/[0.12]" : ""
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-ink text-xs truncate">
                     {t.title}
                   </span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1.5 shrink-0">
                     <span
                       className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase ${
                         t.state === "COMPLETED"
@@ -303,7 +305,7 @@ function WorkflowDetailView({
                     >
                       {t.state}
                     </span>
-                    {hasOutput && (
+                    {showOutput && (
                       <span className="text-[10px] text-muted">
                         {isOpen ? "▾" : "▸"}
                       </span>
@@ -313,6 +315,11 @@ function WorkflowDetailView({
                 <div className="text-[11px] text-accent font-mono">
                   🤖 {t.agent_name}
                 </div>
+                {preview && (
+                  <div className="text-[11px] text-ink/80 truncate" title={preview}>
+                    {preview}
+                  </div>
+                )}
                 {stepsFor(t.id).length > 0 && (
                   <div className="text-[10px] text-muted font-mono space-y-0.5 mt-1">
                     {stepsFor(t.id).map((s, i) => (
@@ -321,7 +328,12 @@ function WorkflowDetailView({
                   </div>
                 )}
                 {t.error && <p className="text-[11px] text-bad mt-1">{t.error}</p>}
-                {isOpen && hasOutput && <TaskOutputView output={t.output} />}
+                {showOutput && !isOpen && (
+                  <div className="text-[10px] text-muted/70 font-mono">
+                    click to inspect saved output
+                  </div>
+                )}
+                {isOpen && showOutput && <TaskOutputView output={t.output} />}
               </div>
             );
           })}
@@ -329,113 +341,4 @@ function WorkflowDetailView({
       </div>
     </div>
   );
-}
-
-/** Render a task's real saved output — only what the API returned. */
-function TaskOutputView({ output }: { output: Record<string, unknown> }) {
-  const draft =
-    output.draft && typeof output.draft === "object"
-      ? (output.draft as Record<string, unknown>)
-      : null;
-  return (
-    <div className="mt-2 pt-2 border-t border-white/[0.07] space-y-2">
-      <div className="text-[10px] font-mono text-muted uppercase">
-        Saved output
-      </div>
-      {draft && (
-        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07] space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-ink">✉️ Email draft</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-warn/10 text-warn border border-warn/20">
-              {String(draft.status ?? "DRAFT")} — not sent
-            </span>
-          </div>
-          {draft.to != null && (
-            <div className="text-[11px]">
-              <span className="text-muted font-mono">To: </span>
-              <span className="text-ink">{String(draft.to)}</span>
-            </div>
-          )}
-          {draft.subject != null && (
-            <div className="text-[11px]">
-              <span className="text-muted font-mono">Subject: </span>
-              <span className="text-ink font-medium">{String(draft.subject)}</span>
-            </div>
-          )}
-          {draft.body != null && (
-            <div className="text-[11px] text-ink/90 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
-              {String(draft.body)}
-            </div>
-          )}
-        </div>
-      )}
-      <GenericOutputView output={output} skipKeys={draft ? ["draft"] : []} />
-    </div>
-  );
-}
-
-/** Fallback renderer: scalars as rows, arrays summarized, nothing invented. */
-function GenericOutputView({
-  output,
-  skipKeys,
-}: {
-  output: Record<string, unknown>;
-  skipKeys: string[];
-}) {
-  const entries = Object.entries(output).filter(([k]) => !skipKeys.includes(k));
-  if (entries.length === 0) return null;
-  return (
-    <div className="space-y-1">
-      {entries.slice(0, 10).map(([k, v]) => (
-        <div key={k} className="text-[11px] leading-relaxed">
-          <span className="text-muted font-mono">{k}: </span>
-          <OutputValue value={v} />
-        </div>
-      ))}
-      {entries.length > 10 && (
-        <div className="text-[10px] text-muted font-mono">
-          +{entries.length - 10} more fields
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OutputValue({ value }: { value: unknown }) {
-  if (value == null) return <span className="text-muted">—</span>;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    const s = String(value);
-    return (
-      <span className="text-ink break-words">
-        {s.length > 300 ? `${s.slice(0, 300)}…` : s}
-      </span>
-    );
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-muted">[]</span>;
-    return (
-      <span className="text-ink">
-        [{value.length} item{value.length === 1 ? "" : "s"}]{" "}
-        <span className="text-muted">
-          {value
-            .slice(0, 3)
-            .map((x) =>
-              typeof x === "object" && x !== null
-                ? JSON.stringify(x).slice(0, 80)
-                : String(x).slice(0, 80)
-            )
-            .join(" · ")}
-        </span>
-      </span>
-    );
-  }
-  if (typeof value === "object") {
-    const s = JSON.stringify(value);
-    return (
-      <span className="text-ink/90 font-mono break-words">
-        {s.length > 300 ? `${s.slice(0, 300)}…` : s}
-      </span>
-    );
-  }
-  return null;
 }
