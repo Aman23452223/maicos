@@ -80,10 +80,25 @@ class EmailConnector:
                 "to": payload.get("to"),
                 "subject": payload.get("subject", ""),
                 "body": payload.get("body", ""),
+                # Demo placeholders stay visible but unsendable until a
+                # real recipient is verified (set by the drafting agent).
+                "demo_placeholder": bool(payload.get("demo_placeholder", False)),
+                "sendable": bool(payload.get("sendable", True)),
             }
             _OUTBOX.put(mid, rec)
             return ToolResult(ok=True, confirmed=True, data=rec, external_id=mid)
         if operation == "message.send":
+            to = str(payload.get("to") or "")
+            domain = to.split("@", 1)[1].lower() if "@" in to else ""
+            if domain == "example.com" or domain.endswith(".example.com"):
+                # RFC-2606 documentation domains can never receive mail.
+                # Refuse BEFORE persisting so no SENT record is ever created.
+                return ToolResult(
+                    ok=False,
+                    confirmed=False,
+                    message=("refused: recipient is a demo placeholder "
+                             "(@example.com) — verify a real address before sending"),
+                )
             mid = str(uuid.uuid4())
             rec = {
                 "id": mid,

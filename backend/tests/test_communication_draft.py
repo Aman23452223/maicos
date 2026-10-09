@@ -403,3 +403,73 @@ def test_user_typed_to_address_trusted(db, workspace_user):
     assert res.error is None, res.error
     draft = (res.output or {}).get("draft") or {}
     assert draft.get("to") == "newlead@example.com"
+
+
+def test_greeting_uses_linked_contact_person_name(db, workspace_user):
+    """Person name via the CRM company link polishes the greeting."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+    from app.models.orm import CrmCompany, CrmContact
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    co = CrmCompany(company_id=ws, name="Aarav Electrical Works")
+    db.add(co)
+    db.flush()
+    db.add(CrmContact(company_id=ws, crm_company_id=co.id,
+                      name="Aarav Kumar", email=None))
+    db.commit()
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email", description="welcome",
+                  input={"action": "draft", "customer": "Aarav Electrical Works"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    draft = (res.output or {}).get("draft") or {}
+    assert draft.get("to") == "contact@aarav.test"
+    assert "Hi Aarav Kumar," in (draft.get("body") or ""), draft.get("body")
+
+
+def test_example_com_flagged_demo_and_unsendable(db, workspace_user):
+    """@example.com recipients stay visible but flagged + unsendable."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    res = CommunicationAgent().run(
+        AgentTask(title="Email demo@example.com the welcome note",
+                  description="demo recipient",
+                  input={"action": "draft", "to": "demo@example.com"}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    out = res.output or {}
+    assert out.get("demo_placeholder") is True
+    assert out.get("recipient_verified") is False
+    draft = out.get("draft") or {}
+    assert draft.get("to") == "demo@example.com"  # visible, not hidden
+    assert draft.get("status") == "DRAFT"
+    assert draft.get("sendable") is False
+    assert draft.get("demo_placeholder") is True
+    assert any("demo placeholder" in m for m in (out.get("missing") or []))
+
+
+def test_connector_refuses_demo_send_without_record(db, workspace_user):
+    """message.send to @example.com is refused; no SENT record is created."""
+    from app.core.context import Principal
+    from app.integrations.connectors.email import EmailConnector
+
+    ws = workspace_user["company"].id
+    p = Principal(user_id="u", workspace_id=ws, roles=("owner",))
+    res = EmailConnector().execute(
+        p, "message.send",
+        {"to": "someone@example.com", "subject": "x", "body": "y"})
+    assert res.ok is False and res.confirmed is False
+    assert "demo placeholder" in (res.message or "")
+    from app.integrations.connectors.email import _OUTBOX
+    assert not [m for m in _OUTBOX.all()
+                if m.get("workspace_id") == ws and m.get("status") == "SENT"]
+
+    ok = EmailConnector().execute(
+        p, "message.send",
+        {"to": "real@aarav.test", "subject": "x", "body": "y"})
+    assert ok.ok is True and ok.confirmed is True

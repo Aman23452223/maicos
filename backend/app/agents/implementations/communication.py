@@ -14,6 +14,17 @@ from app.agents.runtime import call_tool
 from app.approvals.service import requires_approval
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
+
+def _is_demo_address(value: Any) -> bool:
+    """RFC-2606 documentation domains can never receive mail.
+
+    Drafts addressed here are demo placeholders: kept visible and
+    flagged, but never sendable until a real recipient is verified.
+    """
+    if not value or not _EMAIL_RE.match(str(value).strip()):
+        return False
+    domain = str(value).strip().split("@", 1)[1].lower()
+    return domain == "example.com" or domain.endswith(".example.com")
 _PLACEHOLDER_RE = re.compile(
     r"(\{\{.*?\}\}|XXX+|Lorem ipsum|\[[^\[\]\n()]{1,60}\](?!\())",
     re.IGNORECASE,
@@ -93,11 +104,16 @@ class CommunicationAgent:
                 ctx,
                 "email",
                 "message.draft",
-                {"to": to, "subject": subject, "body": body},
+                {"to": to, "subject": subject, "body": body,
+                 "demo_placeholder": info["demo_placeholder"],
+                 "sendable": info["recipient_verified"]},
             )
             if not (res["ok"] and res["confirmed"]):
                 return AgentResult(error=res.get("message") or "draft failed")
-            out: dict[str, Any] = {"draft": res["data"], "purpose": info["purpose"]}
+            out: dict[str, Any] = {"draft": res["data"], "purpose": info["purpose"],
+                                   "recipient_verified": info["recipient_verified"]}
+            if info["demo_placeholder"]:
+                out["demo_placeholder"] = True
             if info["missing"]:
                 out["missing"] = info["missing"]
             return AgentResult(output=out)
@@ -279,10 +295,14 @@ class CommunicationAgent:
     def _crm_recipient(
         self, ctx: AgentContext, customer: str | None
     ) -> tuple[str | None, str | None]:
-        """(email, contact_name) from CRM records, tenant-scoped. Never invents."""
+        """(email, contact_name) from CRM records, tenant-scoped. Never invents.
+
+        Looks at the lead, then contacts matching by name, then contacts
+        linked to a CRM company matching the customer name.
+        """
         if not customer:
             return None, None
-        from app.models.orm import CrmContact, Customer, Lead
+        from app.models.orm import CrmCompany, CrmContact, Customer, Lead
 
         ws = ctx.principal.workspace_id
         like = f"%{customer}%"
@@ -293,7 +313,8 @@ class CommunicationAgent:
             .first()
         )
         if lead is not None and self._valid_email(lead.email):
-            return str(lead.email).strip(), None
+            person = self._linked_contact_name(ctx, ws, customer)
+            return str(lead.email).strip(), person
         contact = (
             ctx.db.query(CrmContact)
             .filter(CrmContact.company_id == ws, CrmContact.name.ilike(like))
@@ -301,6 +322,22 @@ class CommunicationAgent:
         )
         if contact is not None and self._valid_email(contact.email):
             return str(contact.email).strip(), (contact.name or "").strip() or None
+        company = (
+            ctx.db.query(CrmCompany)
+            .filter(CrmCompany.company_id == ws, CrmCompany.name.ilike(like))
+            .first()
+        )
+        if company is not None:
+            linked = (
+                ctx.db.query(CrmContact)
+                .filter(CrmContact.company_id == ws,
+                        CrmContact.crm_company_id == company.id)
+                .all()
+            )
+            for cand in linked:
+                if self._valid_email(cand.email):
+                    return (str(cand.email).strip(),
+                            (cand.name or "").strip() or None)
         cust = (
             ctx.db.query(Customer)
             .filter(Customer.company_id == ws, Customer.name.ilike(like))
@@ -309,6 +346,33 @@ class CommunicationAgent:
         if cust is not None and self._valid_email(cust.email):
             return str(cust.email).strip(), (cust.name or "").strip() or None
         return None, None
+
+    @staticmethod
+    def _linked_contact_name(ctx: AgentContext, ws: str, customer: str) -> str | None:
+        """Person name via a CRM company linked to the customer, if any."""
+        try:
+            from app.models.orm import CrmCompany, CrmContact
+
+            company = (
+                ctx.db.query(CrmCompany)
+                .filter(CrmCompany.company_id == ws,
+                        CrmCompany.name.ilike(f"%{customer}%"))
+                .first()
+            )
+            if company is None:
+                return None
+            cand = (
+                ctx.db.query(CrmContact)
+                .filter(CrmContact.company_id == ws,
+                        CrmContact.crm_company_id == company.id,
+                        CrmContact.name.isnot(None))
+                .first()
+            )
+            if cand is not None and (cand.name or "").strip():
+                return cand.name.strip()[:120]
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def _workflow_objective(ctx: AgentContext) -> str:
@@ -376,6 +440,10 @@ class CommunicationAgent:
         Precedence: explicit task input, then upstream task outputs, then
         CRM lookup. Anything unresolvable is reported in `missing` — never
         invented (no "list", no placeholder addresses).
+
+        Returns (customer, contact_name, email, info) where info carries
+        `missing`, `demo_placeholder` (@example.com recipient) and
+        `recipient_verified` (real, sendable address on record).
         """
         inp = task.input or {}
         customer = str(inp.get("customer") or "").strip() or None
@@ -423,7 +491,14 @@ class CommunicationAgent:
             missing.append("recipient email address (not found in CRM)")
         if not customer:
             missing.append("customer name")
-        return customer, contact_name, email, missing
+        demo = _is_demo_address(email)
+        if demo:
+            missing.append(
+                "recipient is a demo placeholder (@example.com) — verify a "
+                "real address before sending")
+        info = {"missing": missing, "demo_placeholder": demo,
+                "recipient_verified": bool(email) and not demo}
+        return customer, contact_name, email, info
 
     def _business_info(
         self, task: AgentTask, ctx: AgentContext
@@ -598,11 +673,18 @@ class CommunicationAgent:
                     to = email
                     break
             missing = [] if to else ["recipient email address (not found in CRM)"]
+            demo = _is_demo_address(to)
+            if demo:
+                missing.append(
+                    "recipient is a demo placeholder (@example.com) — verify a "
+                    "real address before sending")
             return to, subject, body, {"purpose": "payment_reminder",
                                        "customer": customers or None,
-                                       "missing": missing}
+                                       "missing": missing,
+                                       "demo_placeholder": demo,
+                                       "recipient_verified": bool(to) and not demo}
 
-        customer, contact_name, email, missing = self._draft_identity(task, ctx)
+        customer, contact_name, email, info = self._draft_identity(task, ctx)
         business, offerings, audience, catalogue_note = self._business_info(task, ctx)
         purpose = self._draft_purpose(task)
         if purpose == "billing_request":
@@ -630,8 +712,9 @@ class CommunicationAgent:
             subject_ok = bool(explicit_subject)
         subject = explicit_subject if subject_ok else gen_subject
         body = explicit_body if body_ok else gen_body
-        return (email or "", subject, body,
-                {"purpose": purpose, "customer": customer, "missing": missing})
+        info["purpose"] = purpose
+        info["customer"] = customer
+        return (email or "", subject, body, info)
 
     @staticmethod
     def _personalise_draft(
