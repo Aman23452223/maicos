@@ -42,6 +42,10 @@ export default function CommandPage() {
   // falls back to the deterministic planner when no LLM provider is set up.
   const [modelLabel, setModelLabel] = useState<string>("checking…");
 
+  // Display name only: strip internal routing suffixes like ":free".
+  // The provider name stays truthful — no tier claims are ever shown.
+  const displayModel = (id: string) => id.replace(/:free$/i, "");
+
   useEffect(() => {
     // Wait for auth hydration: the token may not exist on first mount.
     if (!user) return;
@@ -50,9 +54,8 @@ export default function CommandPage() {
       .getSettings()
       .then((s) => {
         if (cancelled) return;
-        if (s.openrouter_configured) setModelLabel(s.llm_default_model);
-        else if (s.deepseek_configured)
-          setModelLabel(`DeepSeek (${s.llm_default_model || "deepseek-chat"})`);
+        if (s.openrouter_configured) setModelLabel(displayModel(s.llm_default_model));
+        else if (s.deepseek_configured) setModelLabel("DeepSeek");
         else if (s.openai_configured) setModelLabel("OpenAI (configured)");
         else if (s.anthropic_configured) setModelLabel("Anthropic (configured)");
         else setModelLabel("no LLM configured — rule-based planner");
