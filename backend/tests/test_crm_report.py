@@ -161,6 +161,14 @@ def test_sales_batch_reports_per_lead_entries(db, workspace_user):
     for entry in by_name.values():
         assert len(entry["created_followup_ids"]) == 4
         assert len(entry["due_dates"]) == 4
+    rerun = SalesCRMAgent().run(
+        AgentTask(title="x", description="schedule again",
+                  input={"action": "schedule_followups"}),
+        _ctx(db, ws))
+    rerun_leads = {e["lead_name"]: e for e in
+                   (rerun.output or {}).get("leads") or []}
+    assert rerun_leads["High Co"]["created"] == 0
+    assert rerun_leads["High Co"]["already_scheduled"] == 4
 
 
 def test_followup_empty_is_explained_not_silent(db, workspace_user):

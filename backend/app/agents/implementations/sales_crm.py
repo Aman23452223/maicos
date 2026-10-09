@@ -344,6 +344,7 @@ class SalesCRMAgent:
                     "lead_score": int(lead.score or 0),
                     "priority": lead_priority(lead), "priority_rule": PRIORITY_RULE,
                     "created": r.get("created", 0),
+                    "already_scheduled": r.get("already_scheduled", 0),
                     "created_followup_ids": r.get("created_followup_ids", []),
                     "due_dates": [f.get("due_at") for f in r.get("followups", [])],
                 })
