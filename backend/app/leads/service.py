@@ -41,6 +41,11 @@ def lead_quality_flag(lead: Lead) -> str | None:
             and not (lead.phone or "").strip()):
         return ("likely article/blog content, not a business — "
                 "review before outreach")
+    if ("@" in name
+            and not (lead.email or "").strip()
+            and not (lead.phone or "").strip()):
+        return ("looks like a social profile handle, not a business record — "
+                "review before outreach")
     return None
 
 

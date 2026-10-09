@@ -203,10 +203,12 @@ def test_article_leads_flagged_real_companies_not(db):
     junk = Lead(company_id=ws.id, company_name="Top 22 List of B2B SaaS Companies")
     real = Lead(company_id=ws.id, company_name="Acme Corp", email="a@acme.test")
     nameless = Lead(company_id=ws.id, company_name="   ")
+    social = Lead(company_id=ws.id, company_name="Sharma Traders (@sharmatradersco)")
     assert lead_quality_flag(junk) is not None
     assert "article" in (lead_quality_flag(junk) or "")
     assert lead_quality_flag(real) is None
     assert lead_quality_flag(nameless) is not None
+    assert "social profile" in (lead_quality_flag(social) or "")
 
 
 def test_followup_persistence_matches_output_ids(db):
