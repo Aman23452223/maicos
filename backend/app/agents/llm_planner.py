@@ -56,7 +56,8 @@ Allowed actions per agent:
 - analytics: funnel, pipeline, operations, summarize_context (summarizes
   THIS task's depends_on outputs under their own plan ids — never invent an
   upstream id like "context"; give "required_fields" for missing-info analysis),
-  summarize_profile, ceo_brief, detect_anomaly
+  summarize_profile, ceo_brief (computes a real-data brief when no "summary"
+  is given — pass "summary" only for caller-verified text), detect_anomaly
 """
 
 

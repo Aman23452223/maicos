@@ -11,6 +11,22 @@ from app.models.orm import CrmActivity, FollowUp, Lead, LeadStatus
 
 DEFAULT_SEQUENCE_DAYS = [0, 2, 5, 10]
 
+PRIORITY_RULE = "lead score >= 70 → high, >= 40 → medium, else normal"
+
+
+def lead_priority(lead: Lead) -> str:
+    """Deterministic priority from the lead's real score (rule documented
+    in every output so it stays auditable, never a hidden judgment)."""
+    try:
+        score = int(lead.score or 0)
+    except (TypeError, ValueError):
+        score = 0
+    if score >= 70:
+        return "high"
+    if score >= 40:
+        return "medium"
+    return "normal"
+
 
 def schedule_sequence(db: Session, *, company_id: str, lead_id: str,
                       days: list[int] | None = None,
@@ -20,7 +36,7 @@ def schedule_sequence(db: Session, *, company_id: str, lead_id: str,
         return {"ok": False, "error": "lead not found"}
     days = days or DEFAULT_SEQUENCE_DAYS
     now = datetime.now(UTC)
-    created = 0
+    created: list[dict[str, Any]] = []
     for i, d in enumerate(days):
         key = f"followup:{company_id}:{lead_id}:{i}:{d}"
         exists = db.query(FollowUp).filter(FollowUp.idempotency_key == key).first()
@@ -30,14 +46,24 @@ def schedule_sequence(db: Session, *, company_id: str, lead_id: str,
                       due_at=now + timedelta(days=d), channel=channel,
                       status="scheduled", attempt=i, idempotency_key=key)
         db.add(fu)
-        created += 1
+        db.flush()
+        created.append({"id": fu.id,
+                        "due_at": fu.due_at.isoformat() if fu.due_at else None,
+                        "channel": channel, "attempt": i})
     lead.follow_up_status = "scheduled"
     if not lead.next_follow_up_at:
         lead.next_follow_up_at = now + timedelta(days=days[0])
     db.flush()
     record(db, company_id=company_id, actor=actor, action="followup.scheduled",
-           target_type="lead", target_id=lead_id, details={"created": created})
-    return {"ok": True, "created": created}
+           target_type="lead", target_id=lead_id, details={"created": len(created)})
+    return {"ok": True, "created": len(created),
+            "lead_id": lead_id, "lead_name": lead.company_name,
+            "lead_status": lead.status.value
+            if hasattr(lead.status, "value") else str(lead.status),
+            "lead_score": int(lead.score or 0),
+            "priority": lead_priority(lead), "priority_rule": PRIORITY_RULE,
+            "created_followup_ids": [c["id"] for c in created],
+            "followups": created}
 
 
 def due_followups(db: Session, *, company_id: str, limit: int = 50) -> list[FollowUp]:

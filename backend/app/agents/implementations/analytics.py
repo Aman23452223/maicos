@@ -130,15 +130,103 @@ class AnalyticsAgent:
             ]
             return AgentResult(output={"mean": mean, "stdev": sd, "anomalies": anomalies})
         if action == "ceo_brief":
-            return AgentResult(
-                output={
-                    "summary": task.input.get(
-                        "summary",
-                        "Sales up 12%. Two invoices overdue. One project blocked.",
-                    ),
-                    "needs_attention": task.input.get("needs_attention", []),
-                }
-            )
+            explicit = task.input.get("summary")
+            if explicit and str(explicit).strip():
+                return AgentResult(
+                    output={
+                        "summary": str(explicit)[:1000],
+                        "needs_attention": task.input.get("needs_attention", []),
+                        "source": "caller",
+                    }
+                )
+            # No caller text: compose strictly from this workspace's real
+            # records. Never fall back to example numbers.
+            return self._real_ceo_brief(ctx)
+
+    @staticmethod
+    def _real_ceo_brief(ctx: AgentContext) -> AgentResult:
+        """CEO brief computed only from verified workspace records.
+
+        Every sentence below is backed by a DB/store count in this
+        workspace. Empty areas are reported as empty — never filled
+        with example figures.
+        """
+        from datetime import UTC, datetime
+
+        from app.analytics.metrics import funnel as _funnel
+        from app.analytics.metrics import operations as _ops
+        from app.analytics.metrics import pipeline as _pipe
+
+        ws = ctx.principal.workspace_id
+        fun = _funnel(ctx.db, company_id=ws)
+        pipe = _pipe(ctx.db, company_id=ws)
+        ops = _ops(ctx.db, company_id=ws)
+
+        try:
+            from app.agents.implementations.finance import _invoices_for
+            today = datetime.now(UTC)
+            overdue = []
+            for inv in _invoices_for(ws):
+                if inv.get("status") == "PAID":
+                    continue
+                try:
+                    due = datetime.fromisoformat(str(inv.get("due_at", "")))
+                except ValueError:
+                    continue
+                if due < today:
+                    overdue.append(inv)
+        except Exception:
+            overdue = []
+
+        lines: list[str] = []
+        needs: list[dict[str, str]] = []
+        total = int(fun.get("leads_total", 0) or 0)
+        if total:
+            lines.append(
+                f"{total} leads in CRM "
+                f"({fun.get('contacted', 0)} contacted, "
+                f"{fun.get('responded', 0)} responded, "
+                f"{fun.get('meetings', 0)} in meetings, "
+                f"{fun.get('won', 0)} won; "
+                f"response rate {fun.get('response_rate', 0)}, "
+                f"conversion {fun.get('conversion_rate', 0)}).")
+        else:
+            lines.append("No leads in CRM yet.")
+        value = int(pipe.get("total_value", 0) or 0)
+        if value:
+            lines.append(f"Open pipeline value {value}.")
+        else:
+            lines.append("No open pipeline value recorded.")
+        if overdue:
+            names = ", ".join(
+                str(i.get("customer") or "customer") for i in overdue[:5])
+            lines.append(
+                f"{len(overdue)} invoices overdue ({names}"
+                f"{', …' if len(overdue) > 5 else ''}).")
+            needs.append({"kind": "overdue_invoices",
+                          "detail": f"{len(overdue)} overdue: {names}"})
+        else:
+            lines.append("No invoices overdue.")
+        pending = int(ops.get("approvals_pending", 0) or 0)
+        if pending:
+            lines.append(f"{pending} approvals waiting for review.")
+            needs.append({"kind": "approvals_pending",
+                          "detail": f"{pending} approvals waiting"})
+        stuck = int(ops.get("qualified_not_contacted", 0) or 0)
+        if stuck:
+            lines.append(f"{stuck} qualified leads never contacted.")
+            needs.append({"kind": "stuck_leads",
+                          "detail": f"{stuck} qualified, never contacted"})
+        sched = int(ops.get("followups_scheduled", 0) or 0)
+        if sched:
+            lines.append(f"{sched} follow-ups scheduled.")
+        return AgentResult(output={
+            "summary": " ".join(lines)[:2000],
+            "needs_attention": needs,
+            "source": "actual",
+            "metrics": {"funnel": fun, "pipeline": pipe, "operations": ops,
+                        "overdue_invoices": len(overdue)},
+        })
         return AgentResult(error=f"unknown analytics action: {action}")
 
 

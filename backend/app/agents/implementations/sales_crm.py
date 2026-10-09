@@ -282,12 +282,25 @@ class SalesCRMAgent:
             rows = ctx.db.query(Lead).filter(
                 Lead.company_id == ws, Lead.status.in_(
                     [LeadStatus.QUALIFIED, LeadStatus.CONTACTED])).limit(20).all()
+            from app.scheduling.followups import PRIORITY_RULE, lead_priority
+
             total = 0
+            items: list[dict] = []
             for lead in rows:
                 r = schedule_sequence(ctx.db, company_id=ws, lead_id=lead.id)
                 total += r.get("created", 0)
+                items.append({
+                    "lead_id": lead.id, "lead_name": lead.company_name,
+                    "lead_status": (lead.status.value
+                                    if hasattr(lead.status, "value") else str(lead.status)),
+                    "lead_score": int(lead.score or 0),
+                    "priority": lead_priority(lead), "priority_rule": PRIORITY_RULE,
+                    "created": r.get("created", 0),
+                    "created_followup_ids": r.get("created_followup_ids", []),
+                    "due_dates": [f.get("due_at") for f in r.get("followups", [])],
+                })
             ctx.db.commit()
-            return AgentResult(output={"sequences_created": total})
+            return AgentResult(output={"sequences_created": total, "leads": items})
         if action == "convert":
             from app.crm.providers import convert_lead_to_contact
 
