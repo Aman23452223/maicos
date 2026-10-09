@@ -304,6 +304,30 @@ def test_placeholder_body_regenerated_not_kept(db, workspace_user):
     assert "Aarav Electrical Works" in body and "Sharma Traders" in body
 
 
+def test_bracket_slot_body_regenerated_not_kept(db, workspace_user):
+    """Bodies with [Contact First Name]-style slots are regenerated."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+
+    ws = workspace_user["company"].id
+    _seed_sharma(db, ws)
+    stub = ("Hi [Contact First Name],\n\nWelcome aboard! We are glad to have "
+            "you with us and will support your journey with timely service "
+            "and clear communication throughout the onboarding process.\n\n"
+            "If you have questions, reply to this email or reach us at "
+            "[Company Phone / Support Address] for quick help.\n\n"
+            "Warm regards,\n[Sender Name]\n[Title]\n[Company Name]")
+    res = CommunicationAgent().run(
+        AgentTask(title="Draft welcome email", description="welcome",
+                  input={"action": "draft", "customer": "Aarav Electrical Works",
+                         "subject": "Welcome!", "body": stub}),
+        _ctx(db, ws))
+    assert res.error is None, res.error
+    body = ((res.output or {}).get("draft") or {}).get("body") or ""
+    assert "[" not in body and "]" not in body, body
+    assert "Aarav Electrical Works" in body and "Sharma Traders" in body
+
+
 def test_wrong_direction_subject_regenerated(db, workspace_user):
     """A welcome subject naming the customer as the destination is rebuilt."""
     from app.agents.base import AgentTask

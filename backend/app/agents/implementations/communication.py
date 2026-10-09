@@ -14,7 +14,10 @@ from app.agents.runtime import call_tool
 from app.approvals.service import requires_approval
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
-_PLACEHOLDER_RE = re.compile(r"(\{\{.*?\}\}|\[Your [^\]]*\]|\[Insert [^\]]*\]|XXX+|Lorem ipsum)", re.IGNORECASE)
+_PLACEHOLDER_RE = re.compile(
+    r"(\{\{.*?\}\}|XXX+|Lorem ipsum|\[[^\[\]\n()]{1,60}\](?!\())",
+    re.IGNORECASE,
+)
 _BILLING_HINTS = ("billing", "missing", "kyc", "gst", "invoice",
                   "quotation", "payment", "dues", "document")
 
