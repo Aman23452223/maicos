@@ -12,6 +12,62 @@ from app.agents.runtime import call_tool
 ENRICH_BATCH_LIMIT = 10
 
 
+def _score_row(db, ws, lead, threshold: int, actor: str = "sales_crm") -> dict | None:
+    """Score one lead; return the honest outcome entry (None on failure).
+
+    The entry reports the status the lead actually holds now — callers
+    must not relabel "scored" as "qualified".
+    """
+    from app.leads.service import qualify_lead
+
+    before = lead.status.value if hasattr(lead.status, "value") else str(lead.status)
+    r = qualify_lead(db, company_id=ws, lead_id=lead.id,
+                     actor=actor, threshold=threshold)
+    if not r.get("ok"):
+        return None
+    return {"lead_id": lead.id, "lead_name": lead.company_name,
+            "score": r.get("score"), "status": r.get("status"),
+            "previous_status": before,
+            "reasons": r.get("reasons") or {}}
+
+
+def _summarize_scoring(entries: list[dict]) -> dict:
+    """Honest roll-up: scored vs actually-attained statuses."""
+    became: dict[str, int] = {}
+    for e in entries:
+        became[e["status"]] = became.get(e["status"], 0) + 1
+    return {"scored": len(entries), "became": became,
+            "became_qualified": became.get("QUALIFIED", 0),
+            "leads": entries[:50]}
+
+
+def _duplicate_groups(db, ws: str, limit: int = 50) -> list[dict]:
+    """Name/domain collisions worth a human look. Reported only —
+    nothing is merged or deleted automatically."""
+    from collections import defaultdict
+
+    from app.models.orm import Lead
+
+    rows = db.query(Lead).filter(Lead.company_id == ws).limit(200).all()
+    groups: dict[str, list] = defaultdict(list)
+    for lead in rows:
+        key = (lead.normalized_name or "").strip()
+        if key:
+            groups[f"name:{key}"].append(lead)
+        dom = (lead.domain or "").strip().lower()
+        if dom:
+            groups[f"domain:{dom}"].append(lead)
+    out = []
+    for key, members in groups.items():
+        if len(members) > 1:
+            out.append({"key": key, "count": len(members),
+                        "lead_names": [m.company_name for m in members[:5]],
+                        "lead_ids": [m.id for m in members[:5]]})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _followup_ineligibility(lead, status: str) -> str:
     """Why this lead gets no follow-up sequence (honest, specific)."""
     score = int(lead.score or 0)
@@ -166,7 +222,8 @@ class SalesCRMAgent:
             new_leads = ctx.db.query(Lead).filter(
                 Lead.company_id == ws, Lead.status == LeadStatus.NEW).limit(50).all()
             if not new_leads:
-                return AgentResult(output={"qualified": 0, "message": "no NEW leads to qualify"})
+                return AgentResult(output={"scored": 0, "became_qualified": 0,
+                                            "message": "no NEW leads to qualify"})
             done = 0
             for lead in new_leads[:10]:
                 if lead.website:
@@ -175,15 +232,23 @@ class SalesCRMAgent:
                                     actor="sales_crm")
                     except Exception:
                         pass
+            entries: list[dict] = []
+            failed = 0
+            threshold = int(task.input.get("threshold", 60))
             for lead in new_leads:
                 try:
-                    qualify_lead(ctx.db, company_id=ws, lead_id=lead.id,
-                                 actor="sales_crm")
-                    done += 1
+                    entry = _score_row(ctx.db, ws, lead, threshold)
+                    if entry is None:
+                        failed += 1
+                    else:
+                        entries.append(entry)
                 except Exception:
+                    failed += 1
                     continue
             ctx.db.commit()
-            return AgentResult(output={"qualified": done})
+            out = _summarize_scoring(entries)
+            out.update({"failed": failed, "batch": True})
+            return AgentResult(output=out)
         if action == "discover_creators":
             from app.leads.creators import discover as discover_creators
 
@@ -242,18 +307,23 @@ class SalesCRMAgent:
                     Lead.company_id == ws,
                     Lead.status.notin_([LeadStatus.DISQUALIFIED, LeadStatus.LOST]),
                 ).limit(50).all()
-                done, failed = 0, 0
+                entries: list[dict] = []
+                failed = 0
+                threshold = int(task.input.get("threshold", 60))
                 for lead in rows:
-                    r = qualify_lead(ctx.db, company_id=ws, lead_id=lead.id,
-                                     actor="sales_crm",
-                                     threshold=int(task.input.get("threshold", 60)))
-                    if r.get("ok"):
-                        done += 1
-                    else:
+                    entry = _score_row(ctx.db, ws, lead, threshold)
+                    if entry is None:
                         failed += 1
+                    else:
+                        entries.append(entry)
                 ctx.db.commit()
-                return AgentResult(output={"qualified": done, "failed": failed,
-                                           "batch": True})
+                out = _summarize_scoring(entries)
+                out.update({"failed": failed, "batch": True,
+                            "action": action})
+                if action == "deduplicate":
+                    out["possible_duplicate_groups"] = \
+                        _duplicate_groups(ctx.db, ws)
+                return AgentResult(output=out)
             out = qualify_lead(ctx.db, company_id=ws, lead_id=lid, actor="sales_crm",
                                threshold=int(task.input.get("threshold", 60)))
             if not out.get("ok"):

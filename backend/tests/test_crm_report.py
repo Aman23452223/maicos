@@ -226,3 +226,56 @@ def test_discovered_prospects_not_counted_until_saved(db, workspace_user):
              db.query(Lead).filter(Lead.company_id == ws).all()]
     assert names == ["Real Co"] and "Ghost Co" not in names
     _ = ghosts
+
+
+def _run_action(db, ws, action, action_input=None):
+    from app.agents.base import AgentTask
+    from app.agents.implementations.sales_crm import SalesCRMAgent
+    from app.core.context import Principal
+    from app.agents.base import AgentContext
+    ctx = AgentContext(db=db, principal=Principal(user_id="u", workspace_id=ws,
+                                                 roles=("owner",)),
+                       workflow_id="w", task_id="t", run_id="r",
+                       shared={"agent_name": "sales_crm"})
+    return SalesCRMAgent().run(
+        AgentTask(title="x", description="x",
+                  input={"action": action, **(action_input or {})}), ctx)
+
+
+def test_batch_scoring_reports_attained_statuses_not_inflated(db, workspace_user):
+    """'qualified: N' previously counted scorings, not QUALIFIED outcomes."""
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Good Co", email="g@good.test",
+                industry="", location="", notes="looking for supply",
+                status=LeadStatus.NEW, score=0))
+    db.add(Lead(company_id=ws, company_name="Junk Co", status=LeadStatus.NEW,
+                score=0))
+    db.commit()
+    for action in ("qualify_batch", "qualify", "score"):
+        out = _run_action(db, ws, action).output
+        assert "qualified" not in out, (action, out)
+        assert out.get("scored", 0) >= 1, (action, out)
+        assert isinstance(out.get("became_qualified"), int)
+        assert isinstance(out.get("leads"), list) and out["leads"], (action, out)
+        for e in out["leads"]:
+            assert {"lead_id", "lead_name", "score", "status"} <= set(e), e
+
+
+def test_deduplicate_reports_without_merging(db, workspace_user):
+    from app.models.orm import Lead, LeadStatus
+
+    ws = workspace_user["company"].id
+    db.add(Lead(company_id=ws, company_name="Acme", status=LeadStatus.NEW,
+                score=0, domain="acme.test"))
+    db.add(Lead(company_id=ws, company_name="Acme Inc", status=LeadStatus.NEW,
+                score=0, domain="acme.test"))
+    db.commit()
+    before = db.query(Lead).filter(Lead.company_id == ws).count()
+    out = _run_action(db, ws, "deduplicate").output
+    after = db.query(Lead).filter(Lead.company_id == ws).count()
+    assert after == before  # reported, never auto-merged
+    groups = out.get("possible_duplicate_groups") or []
+    assert any(g["count"] >= 2 for g in groups), groups
+    assert out.get("scored", 0) >= 2
