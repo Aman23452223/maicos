@@ -123,6 +123,10 @@ export default function CommandPage() {
       setWf(w);
       const ts = await api.listTasks(w.id);
       setTasks(ts);
+      // Release the button as soon as the plan exists: the worker keeps
+      // executing in the background and the pipeline panel below shows
+      // live progress, so a long run never looks stuck.
+      setBusy(false);
       if (!TERMINAL_STATES.has(w.state)) await pollWorkflow(w.id);
     } catch (e) {
       setErr((e as Error).message);

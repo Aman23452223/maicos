@@ -150,6 +150,10 @@ class DeepSeekClient(OpenAIClient):
             self._client = OpenAI(
                 api_key=token,
                 base_url=self.base_url or self.DEEPSEEK_BASE,
+                # Free-tier gateways queue hard: fail fast so planning
+                # falls back to the deterministic planner instead of
+                # holding the HTTP request for minutes.
+                timeout=30.0,
             )
         return self._client
 
