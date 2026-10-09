@@ -42,7 +42,9 @@ Allowed actions per agent:
   discover_creators, crm, select_qualified, schedule_followups, convert,
   create_contact, company.upsert, create_deal, qualify_lead
 - project_ops: create_project, create_doc, list_overdue, list_projects
-- communication: draft, send, bulk_send, send_digest
+- communication: draft (give "to", "subject" AND "body" in input — the
+  saved draft shows exactly these; never leave body empty), send, bulk_send,
+  send_digest
 - finance: prepare_invoice (needs customer + amount; approval-gated),
   prepare_quotation (needs customer and/or items; draft only, never final),
   create_invoice (approval replay only — never emit directly),
