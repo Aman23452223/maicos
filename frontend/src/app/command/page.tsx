@@ -41,9 +41,13 @@ export default function CommandPage() {
   const [modelLabel, setModelLabel] = useState<string>("checking…");
 
   useEffect(() => {
+    // Wait for auth hydration: the token may not exist on first mount.
+    if (!user) return;
+    let cancelled = false;
     api
       .getSettings()
       .then((s) => {
+        if (cancelled) return;
         if (s.openrouter_configured) setModelLabel(s.llm_default_model);
         else if (s.deepseek_configured)
           setModelLabel(`DeepSeek (${s.llm_default_model || "deepseek-chat"})`);
@@ -51,8 +55,13 @@ export default function CommandPage() {
         else if (s.anthropic_configured) setModelLabel("Anthropic (configured)");
         else setModelLabel("no LLM configured — rule-based planner");
       })
-      .catch(() => setModelLabel("model status unavailable"));
-  }, []);
+      .catch(() => {
+        if (!cancelled) setModelLabel("model status unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   async function handleAttach(f: File) {
     if (!user) {

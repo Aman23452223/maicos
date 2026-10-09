@@ -159,7 +159,7 @@ export function AppHeader() {
                   {user.name || user.email.split("@")[0]}
                 </div>
                 <div className="text-[10px] text-accent leading-none font-mono">
-                  {user.roles?.[0] || "admin"}
+                  {user.roles?.includes("owner") ? "owner" : (user.roles?.[0] || "member")}
                 </div>
               </div>
               <span className="text-xs text-muted">▾</span>
