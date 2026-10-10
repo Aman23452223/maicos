@@ -924,8 +924,10 @@ body:has(.hero-root) {
   aside, header, nav { display: none !important; }
   body { background: #fff !important; }
   body * { visibility: hidden; }
-  #business-results, #business-results * { visibility: visible; }
-  #business-results { position: absolute !important; inset: 0 !important; background: #fff !important; border: none !important; box-shadow: none !important; }
-  #business-results * { color: #000 !important; background: transparent !important; border-color: #ccc !important; box-shadow: none !important; }
+  #demo-report, #demo-report * { visibility: visible; }
+  #demo-report { position: absolute !important; inset: 0 !important; background: #fff !important; border: none !important; box-shadow: none !important; }
+  #demo-report * { color: #000 !important; background: transparent !important; border-color: #ccc !important; box-shadow: none !important; }
 }
+
+
 

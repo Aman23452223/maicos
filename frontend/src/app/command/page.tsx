@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { TaskOutputView, hasSavedOutput, taskOutputPreview } from "@/components/TaskOutput";
 import { BusinessResults } from "@/components/BusinessResults";
+import { DemoReport } from "@/components/DemoReport";
 import type { Workflow, WorkflowTask } from "@/lib/types";
 
 const TERMINAL_STATES = new Set([
@@ -413,6 +414,9 @@ const w = await api.resume(wf.id);
           </div>
         </div>
       </div>
+
+      {/* Demo Execution Report — one readable result per run */}
+      {wf && <DemoReport workflow={wf} tasks={tasks} />}
 
       {/* Business Results — consolidated per-client report from records */}
       {wf && <BusinessResults />}
