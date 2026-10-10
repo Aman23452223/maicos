@@ -117,15 +117,25 @@ class EmailConnector:
             msg["Subject"] = str(payload.get("subject", ""))
             msg.set_content(str(payload.get("body", "")))
             delivered = _deliver_smtp(msg)
-            if delivered:
-                rec["transport"] = delivered
-                _OUTBOX.put(mid, rec)
-                transport = delivered
-                if transport.startswith("smtp-error"):
-                    # SMTP configured but delivery failed: honest failure,
-                    # never fake SENT. (No-SMTP path keeps legacy outbox SENT
-                    # for backward compat with the proof/tests.)
-                    return ToolResult(
+            if not delivered:
+                # No email provider configured: never claim SENT. Remove
+                # the provisional record so no SENT artifact exists, and
+                # fail honestly — the caller surfaces this, it never
+                # becomes a "contacted" funnel count.
+                _OUTBOX.delete(mid)
+                return ToolResult(
+                    ok=False,
+                    confirmed=False,
+                    message=("no email provider configured (SMTP_HOST or "
+                             "SENDGRID_API_KEY) — message not sent"),
+                )
+            rec["transport"] = delivered
+            _OUTBOX.put(mid, rec)
+            transport = delivered
+            if transport.startswith("smtp-error"):
+                # SMTP configured but delivery failed: honest failure,
+                # never fake SENT.
+                return ToolResult(
                         ok=False,
                         confirmed=False,
                         data=rec,

@@ -28,8 +28,21 @@ export default function AnalyticsPage() {
           <div className="text-muted">Responded: {String(funnel.responded ?? 0)}</div>
           <div className="text-muted">Meetings: {String(funnel.meetings ?? 0)}</div>
           <div className="text-muted">Won: {String(funnel.won ?? 0)}</div>
-          <div className="text-muted">Response rate: {String(funnel.response_rate ?? 0)}</div>
-          <div className="text-muted">Conversion rate: {String(funnel.conversion_rate ?? 0)}</div>
+          <div className="text-muted">
+            Response rate: {String(funnel.responded ?? 0)}/{String(funnel.contacted ?? 0)}
+            {" "}= {String(funnel.response_rate ?? 0)}
+          </div>
+          <div className="text-muted">
+            Conversion rate: {String(funnel.won ?? 0)}/{String(funnel.leads_total ?? 0)}
+            {" "}= {String(funnel.conversion_rate ?? 0)}
+          </div>
+          {(funnel.contacted ?? 0) === 0 && (
+            <div className="mt-1 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07] text-[11px] text-muted leading-relaxed">
+              No contact activity recorded yet — counts change only on confirmed
+              outreach (verified email delivery), logged responses, held meetings
+              or won deals. Scheduled follow-ups are not counted as contacts.
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-xs text-muted">Loading…</div>

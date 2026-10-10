@@ -225,14 +225,21 @@ def test_welcome_draft_end_to_end_saved_output(db, workspace_user, client):
     assert not any(m.get("status") == "SENT" for m in mine)
 
 
-def test_approved_send_output_carries_real_subject_body(db, workspace_user):
+def test_approved_send_output_carries_real_subject_body(db, workspace_user, monkeypatch):
     """Lock the output mapping the Inspector's sent-view relies on.
 
-    Runs `execute_approved` directly (no SMTP configured, so delivery is
-    file-outbox only — nothing leaves the machine).
+    Transport is explicitly stubbed: this asserts the mapping from a
+    provider confirmation into task output — real delivery is covered
+    by the no-provider failure tests above, never faked here.
     """
     from app.agents.implementations.communication import CommunicationAgent
 
+    rec = {"id": "test-sent-1", "status": "SENT", "to": "aman@abc.test",
+           "subject": SUBJECT, "body": BODY}
+    monkeypatch.setattr(
+        CommunicationAgent, "_deliver",
+        lambda self, ctx, channel, payload: {"ok": True, "confirmed": True,
+                                             "data": rec})
     ws = workspace_user["company"].id
     res = CommunicationAgent().execute_approved(
         {"action": "send_external_communication",
@@ -469,7 +476,43 @@ def test_connector_refuses_demo_send_without_record(db, workspace_user):
     assert not [m for m in _OUTBOX.all()
                 if m.get("workspace_id") == ws and m.get("status") == "SENT"]
 
-    ok = EmailConnector().execute(
+
+def test_send_without_provider_fails_honestly_no_sent_record(db, workspace_user):
+    """No SMTP/SendGrid: send must fail, never fake-SENT (funnel guard)."""
+    from app.core.context import Principal
+    from app.integrations.connectors.email import EmailConnector, _OUTBOX
+
+    ws = workspace_user["company"].id
+    p = Principal(user_id="u", workspace_id=ws, roles=("owner",))
+    before = {m.get("id") for m in _OUTBOX.all() if m.get("workspace_id") == ws}
+    res = EmailConnector().execute(
         p, "message.send",
-        {"to": "real@aarav.test", "subject": "x", "body": "y"})
-    assert ok.ok is True and ok.confirmed is True
+        {"to": "boss@co.test", "subject": "hi", "body": "hello"})
+    assert res.ok is False and res.confirmed is False
+    assert "no email provider configured" in (res.message or "")
+    after = [m for m in _OUTBOX.all() if m.get("workspace_id") == ws]
+    assert not [m for m in after if m.get("status") == "SENT"
+                and m.get("id") not in before]
+
+
+def test_agent_send_without_provider_reports_failure(db, workspace_user, monkeypatch):
+    """Agent surfaces provider failure instead of fake success."""
+    from app.agents.base import AgentTask
+    from app.agents.implementations.communication import CommunicationAgent
+    from app.intel.service import get_or_create_profile
+
+    for var in ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
+                "SMTP_APP_PASSWORD", "SMTP_FROM", "SENDGRID_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    ws = workspace_user["company"].id
+    bp = get_or_create_profile(db, company_id=ws)
+    bp.comms_policy = {"auto_approve": ["email"]}
+    db.commit()
+    res = CommunicationAgent().run(
+        AgentTask(title="x", description="send it",
+                  input={"action": "send", "channel": "email",
+                         "to": "boss@co.test", "subject": "hi",
+                         "body": "hello, this is a real message body"}),
+        _ctx(db, ws))
+    assert res.needs_approval is None  # auto-approved: reaches provider
+    assert res.error is not None and "provider" in res.error.lower(), res
